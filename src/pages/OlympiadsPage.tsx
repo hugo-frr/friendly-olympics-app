@@ -1,6 +1,7 @@
 import { useState } from "react";
-import { Trash2, UserPlus, Users, Plus, Minus, Search, Trophy, Calendar, Check } from "lucide-react";
-import { useStore, useCurrentOlympiad } from "@/store/useStore";
+import { Trash2, UserPlus, Users, Plus, Minus, Search, Trophy, Calendar, Check, LogOut, Loader2 } from "lucide-react";
+import { useDataContext } from "@/contexts/DataContext";
+import { useAuthContext } from "@/contexts/AuthContext";
 import { PageContainer } from "@/components/layout/PageContainer";
 import { AppCard, AppCardHeader, AppCardTitle, AppCardContent } from "@/components/ui/app-card";
 import { AppInput } from "@/components/ui/app-input";
@@ -9,10 +10,46 @@ import { Chip } from "@/components/ui/chip";
 import { cn } from "@/lib/utils";
 import type { EventType, ScoringRule } from "@/lib/types";
 import { EVENT_TYPE_LABELS } from "@/lib/types";
+import { toast } from "sonner";
 
 export default function OlympiadsPage() {
+  const { loading } = useDataContext();
+  const { signOut, user } = useAuthContext();
+
+  const handleSignOut = async () => {
+    await signOut();
+    toast.success("Déconnexion réussie");
+  };
+
+  if (loading) {
+    return (
+      <PageContainer title="🏆 Olympiades">
+        <div className="flex items-center justify-center py-12">
+          <Loader2 className="w-8 h-8 animate-spin text-primary" />
+        </div>
+      </PageContainer>
+    );
+  }
+
   return (
-    <PageContainer title="🏆 Olympiades" subtitle="Gère tes joueurs, olympiades et épreuves">
+    <PageContainer 
+      title="🏆 Olympiades" 
+      subtitle="Gère tes joueurs, olympiades et épreuves"
+    >
+      {/* User info */}
+      <div className="flex items-center justify-between mb-2 px-1">
+        <span className="text-sm text-muted-foreground">
+          {user?.email}
+        </span>
+        <button
+          onClick={handleSignOut}
+          className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors"
+        >
+          <LogOut className="w-4 h-4" />
+          Déconnexion
+        </button>
+      </div>
+
       <PlayersSection />
       <CreateOlympiadSection />
       <OlympiadsListSection />
@@ -26,20 +63,18 @@ export default function OlympiadsPage() {
 // ============================================
 function PlayersSection() {
   const [newPlayerName, setNewPlayerName] = useState("");
-  const players = useStore((s) => s.players);
-  const addPlayer = useStore((s) => s.addPlayer);
-  const removePlayer = useStore((s) => s.removePlayer);
+  const { players, addPlayer, removePlayer } = useDataContext();
 
-  const handleAddPlayer = () => {
+  const handleAddPlayer = async () => {
     if (newPlayerName.trim()) {
-      addPlayer(newPlayerName);
+      await addPlayer(newPlayerName);
       setNewPlayerName("");
     }
   };
 
-  const handleRemovePlayer = (id: string, name: string) => {
+  const handleRemovePlayer = async (id: string, name: string) => {
     if (confirm(`Supprimer ${name} ?`)) {
-      removePlayer(id);
+      await removePlayer(id);
     }
   };
 
@@ -100,8 +135,7 @@ function CreateOlympiadSection() {
   const [selectedPlayerIds, setSelectedPlayerIds] = useState<Set<string>>(new Set());
   const [showAllPlayers, setShowAllPlayers] = useState(false);
 
-  const players = useStore((s) => s.players);
-  const createOlympiad = useStore((s) => s.createOlympiad);
+  const { players, createOlympiad } = useDataContext();
 
   const displayedPlayers = showAllPlayers ? players : players.slice(0, 5);
 
@@ -119,11 +153,12 @@ function CreateOlympiadSection() {
     setSelectedPlayerIds(new Set(players.map((p) => p.id)));
   };
 
-  const handleCreate = () => {
+  const handleCreate = async () => {
     if (title.trim() && selectedPlayerIds.size > 0) {
-      createOlympiad(title, Array.from(selectedPlayerIds));
+      await createOlympiad(title, Array.from(selectedPlayerIds));
       setTitle("");
       setSelectedPlayerIds(new Set());
+      toast.success("Olympiade créée !");
     }
   };
 
@@ -194,17 +229,14 @@ function CreateOlympiadSection() {
 // OLYMPIADS LIST SECTION
 // ============================================
 function OlympiadsListSection() {
-  const olympiads = useStore((s) => s.olympiads);
-  const currentOlympiadId = useStore((s) => s.currentOlympiadId);
-  const setCurrentOlympiad = useStore((s) => s.setCurrentOlympiad);
-  const removeOlympiad = useStore((s) => s.removeOlympiad);
-  const players = useStore((s) => s.players);
+  const { olympiads, currentOlympiadId, setCurrentOlympiad, removeOlympiad, players } = useDataContext();
 
   const getPlayerName = (id: string) => players.find((p) => p.id === id)?.name ?? "?";
 
-  const handleRemove = (id: string, title: string) => {
+  const handleRemove = async (id: string, title: string) => {
     if (confirm(`Supprimer l'olympiade "${title}" ?`)) {
-      removeOlympiad(id);
+      await removeOlympiad(id);
+      toast.success("Olympiade supprimée");
     }
   };
 
@@ -277,13 +309,9 @@ function OlympiadsListSection() {
 // EVENTS SECTION
 // ============================================
 function EventsSection() {
-  const currentOlympiad = useCurrentOlympiad();
+  const { currentOlympiad, activities, addEventInstance, removeEventInstance } = useDataContext();
   const [searchQuery, setSearchQuery] = useState("");
   const [showAddActivity, setShowAddActivity] = useState(false);
-
-  const activities = useStore((s) => s.activities);
-  const addEventInstance = useStore((s) => s.addEventInstance);
-  const removeEventInstance = useStore((s) => s.removeEventInstance);
 
   if (!currentOlympiad) {
     return (
@@ -311,12 +339,12 @@ function EventsSection() {
     return a.name.localeCompare(b.name);
   });
 
-  const handleAddInstance = (activity: typeof activities[0]) => {
+  const handleAddInstance = async (activity: typeof activities[0]) => {
     const teamSize = activity.defaultType === "equipe" 
       ? parseInt(prompt("Taille des équipes (ex: 2 pour 2v2):", "2") || "2", 10)
       : undefined;
 
-    addEventInstance(currentOlympiad.id, {
+    await addEventInstance(currentOlympiad.id, {
       templateId: activity.id,
       name: activity.name,
       type: activity.defaultType,
@@ -325,11 +353,11 @@ function EventsSection() {
     });
   };
 
-  const handleRemoveInstance = (activity: typeof activities[0]) => {
+  const handleRemoveInstance = async (activity: typeof activities[0]) => {
     const instances = currentOlympiad.eventInstances.filter((e) => e.templateId === activity.id);
     const lastInstance = instances[instances.length - 1];
     if (lastInstance && confirm(`Retirer "${activity.name}" de cette olympiade ?`)) {
-      removeEventInstance(currentOlympiad.id, lastInstance.id);
+      await removeEventInstance(currentOlympiad.id, lastInstance.id);
     }
   };
 
@@ -428,9 +456,7 @@ function AddActivitySection({ onClose }: { onClose: () => void }) {
   const [pointsPerWin, setPointsPerWin] = useState("3");
   const [higherIsBetter, setHigherIsBetter] = useState(true);
 
-  const addActivity = useStore((s) => s.addActivity);
-  const activities = useStore((s) => s.activities);
-  const removeActivity = useStore((s) => s.removeActivity);
+  const { activities, addActivity, removeActivity } = useDataContext();
 
   const buildRule = (): ScoringRule => {
     switch (ruleKind) {
@@ -453,16 +479,18 @@ function AddActivitySection({ onClose }: { onClose: () => void }) {
     }
   };
 
-  const handleAdd = () => {
+  const handleAdd = async () => {
     if (name.trim()) {
-      addActivity(name, selectedType, buildRule());
+      await addActivity(name, selectedType, buildRule());
       setName("");
+      toast.success("Activité ajoutée");
     }
   };
 
-  const handleRemove = (id: string, actName: string) => {
+  const handleRemove = async (id: string, actName: string) => {
     if (confirm(`Supprimer l'activité "${actName}" ?`)) {
-      removeActivity(id);
+      await removeActivity(id);
+      toast.success("Activité supprimée");
     }
   };
 
@@ -513,12 +541,11 @@ function AddActivitySection({ onClose }: { onClose: () => void }) {
             </Chip>
           </div>
 
-          {(ruleKind === "placement_table" || ruleKind === "numeric_rank") && (
+          {ruleKind === "placement_table" && (
             <AppInput
-              placeholder="Barème: 5,3,2,1,0"
+              placeholder="Barème (ex: 5,3,2,1,0)"
               value={tableInput}
               onChange={(e) => setTableInput(e.target.value)}
-              className="mb-2"
             />
           )}
 
@@ -528,41 +555,52 @@ function AddActivitySection({ onClose }: { onClose: () => void }) {
               placeholder="Points par victoire"
               value={pointsPerWin}
               onChange={(e) => setPointsPerWin(e.target.value)}
-              className="mb-2"
             />
           )}
 
           {ruleKind === "numeric_rank" && (
-            <label className="flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                checked={higherIsBetter}
-                onChange={(e) => setHigherIsBetter(e.target.checked)}
-                className="rounded"
+            <div className="space-y-2">
+              <AppInput
+                placeholder="Barème (ex: 5,3,2,1,0)"
+                value={tableInput}
+                onChange={(e) => setTableInput(e.target.value)}
               />
-              Score élevé = meilleur
-            </label>
+              <label className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={higherIsBetter}
+                  onChange={(e) => setHigherIsBetter(e.target.checked)}
+                  className="rounded"
+                />
+                <span className="text-sm">Score élevé = meilleur</span>
+              </label>
+            </div>
           )}
         </div>
 
-        <AppButton onClick={handleAdd} className="w-full mb-4" disabled={!name.trim()}>
+        <AppButton onClick={handleAdd} className="w-full mb-6" disabled={!name.trim()}>
+          <Plus className="w-4 h-4 mr-2" />
           Ajouter l'activité
         </AppButton>
 
+        {/* List existing activities */}
         <div className="border-t border-border pt-4">
-          <h4 className="text-sm text-muted-foreground mb-2">Activités existantes</h4>
-          <div className="space-y-2 max-h-40 overflow-y-auto">
-            {activities.map((act) => (
-              <div key={act.id} className="flex items-center justify-between p-2 bg-muted/30 rounded-lg">
+          <h4 className="text-sm font-medium mb-3">Activités existantes</h4>
+          <div className="space-y-2 max-h-48 overflow-y-auto">
+            {activities.map((activity) => (
+              <div
+                key={activity.id}
+                className="flex items-center justify-between p-2 bg-muted/30 rounded-lg"
+              >
                 <div>
-                  <span className="font-medium text-sm">{act.name}</span>
+                  <span className="font-medium text-sm">{activity.name}</span>
                   <span className="text-xs text-muted-foreground ml-2">
-                    {EVENT_TYPE_LABELS[act.defaultType]}
+                    {EVENT_TYPE_LABELS[activity.defaultType]}
                   </span>
                 </div>
                 <button
-                  onClick={() => handleRemove(act.id, act.name)}
-                  className="p-1 hover:bg-destructive/20 rounded"
+                  onClick={() => handleRemove(activity.id, activity.name)}
+                  className="p-1 hover:bg-destructive/20 rounded transition-colors"
                 >
                   <Trash2 className="w-4 h-4 text-destructive" />
                 </button>
