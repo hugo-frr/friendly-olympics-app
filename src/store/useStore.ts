@@ -63,6 +63,7 @@ export const useStore = create<IStoreState>()(
         const newPlayer: IPlayer = {
           id: nanoid(8),
           name: trimmedName,
+          userId: "local",
         };
         
         set((state) => ({

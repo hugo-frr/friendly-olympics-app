@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Trash2, UserPlus, Users, Plus, Minus, Search, Trophy, Calendar, Check, LogOut, Loader2 } from "lucide-react";
+import { Trash2, UserPlus, Users, Plus, Minus, Search, Trophy, Calendar, Check, LogOut, Loader2, Mail, Bell } from "lucide-react";
 import { useDataContext } from "@/contexts/DataContext";
 import { useAuthContext } from "@/contexts/AuthContext";
 import { PageContainer } from "@/components/layout/PageContainer";
@@ -50,11 +50,73 @@ export default function OlympiadsPage() {
         </button>
       </div>
 
+      <NotificationsSection />
       <PlayersSection />
       <CreateOlympiadSection />
       <OlympiadsListSection />
+      <ShareOlympiadSection />
       <EventsSection />
     </PageContainer>
+  );
+}
+
+// ============================================
+// NOTIFICATIONS SECTION
+// ============================================
+function NotificationsSection() {
+  const { notifications, acceptInvite, markNotificationRead } = useDataContext();
+
+  const unread = notifications.filter((notification) => !notification.readAt);
+  if (unread.length === 0) {
+    return null;
+  }
+
+  const handleAcceptInvite = async (notificationId: string, inviteId?: string) => {
+    if (!inviteId) return;
+    await acceptInvite(inviteId);
+    await markNotificationRead(notificationId);
+    toast.success("Invitation acceptée !");
+  };
+
+  const handleMarkRead = async (notificationId: string) => {
+    await markNotificationRead(notificationId);
+  };
+
+  return (
+    <AppCard variant="highlight">
+      <AppCardHeader>
+        <AppCardTitle>
+          <Bell className="inline-block w-5 h-5 mr-2 text-primary" />
+          Notifications ({unread.length})
+        </AppCardTitle>
+      </AppCardHeader>
+      <AppCardContent>
+        <div className="space-y-3">
+          {unread.map((notification) => {
+            const inviteId = (notification.data?.invite_id as string | undefined) ?? undefined;
+            return (
+              <div key={notification.id} className="flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="font-medium truncate">{notification.title}</p>
+                  {notification.body && (
+                    <p className="text-xs text-muted-foreground">{notification.body}</p>
+                  )}
+                </div>
+                {notification.type === "olympiad_invite" ? (
+                  <AppButton size="sm" onClick={() => handleAcceptInvite(notification.id, inviteId)}>
+                    Rejoindre
+                  </AppButton>
+                ) : (
+                  <AppButton size="sm" variant="ghost" onClick={() => handleMarkRead(notification.id)}>
+                    Ok
+                  </AppButton>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </AppCardContent>
+    </AppCard>
   );
 }
 
@@ -63,7 +125,11 @@ export default function OlympiadsPage() {
 // ============================================
 function PlayersSection() {
   const [newPlayerName, setNewPlayerName] = useState("");
-  const { players, addPlayer, removePlayer } = useDataContext();
+  const [inviteEmail, setInviteEmail] = useState("");
+  const { players, addPlayer, removePlayer, currentOlympiad, inviteToOlympiad } = useDataContext();
+  const { user } = useAuthContext();
+  const myPlayers = players.filter((player) => player.userId === user?.id);
+  const isOwner = currentOlympiad?.ownerId === user?.id;
 
   const handleAddPlayer = async () => {
     if (newPlayerName.trim()) {
@@ -78,12 +144,19 @@ function PlayersSection() {
     }
   };
 
+  const handleInviteUser = async () => {
+    if (!currentOlympiad || !inviteEmail.trim()) return;
+    await inviteToOlympiad(currentOlympiad.id, inviteEmail);
+    setInviteEmail("");
+    toast.success("Invitation envoyee");
+  };
+
   return (
     <AppCard>
       <AppCardHeader>
         <AppCardTitle>
           <Users className="inline-block w-5 h-5 mr-2 text-primary" />
-          Joueurs ({players.length})
+          Joueurs ({myPlayers.length})
         </AppCardTitle>
       </AppCardHeader>
       <AppCardContent>
@@ -100,13 +173,37 @@ function PlayersSection() {
           </AppButton>
         </div>
 
-        {players.length === 0 ? (
+        <div className="flex gap-2 mb-4">
+          <AppInput
+            placeholder="Inviter un user (email)"
+            value={inviteEmail}
+            onChange={(e) => setInviteEmail(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && handleInviteUser()}
+            className="flex-1"
+            disabled={!currentOlympiad || !isOwner}
+          />
+          <AppButton onClick={handleInviteUser} size="icon" disabled={!currentOlympiad || !isOwner}>
+            <Mail className="w-5 h-5" />
+          </AppButton>
+        </div>
+        {!currentOlympiad && (
+          <p className="text-xs text-muted-foreground mb-3">
+            Selectionne une olympiade pour inviter un user.
+          </p>
+        )}
+        {currentOlympiad && !isOwner && (
+          <p className="text-xs text-muted-foreground mb-3">
+            Seul le proprietaire peut inviter des users.
+          </p>
+        )}
+
+        {myPlayers.length === 0 ? (
           <p className="text-muted-foreground text-sm text-center py-4">
             Aucun joueur. Ajoute des participants !
           </p>
         ) : (
           <div className="flex flex-wrap gap-2 max-h-40 overflow-y-auto">
-            {players.map((player) => (
+            {myPlayers.map((player) => (
               <div
                 key={player.id}
                 className="flex items-center gap-2 bg-muted rounded-full pl-3 pr-1 py-1"
@@ -128,6 +225,83 @@ function PlayersSection() {
 }
 
 // ============================================
+// SHARE OLYMPIAD SECTION
+// ============================================
+function ShareOlympiadSection() {
+  const { currentOlympiad, membersByOlympiad, invites, inviteToOlympiad } = useDataContext();
+  const { user } = useAuthContext();
+  const [inviteEmail, setInviteEmail] = useState("");
+
+  if (!currentOlympiad) {
+    return null;
+  }
+
+  const isOwner = currentOlympiad.ownerId === user?.id;
+  const members = membersByOlympiad[currentOlympiad.id] ?? [];
+  const pendingInvites = invites.filter(
+    (invite) =>
+      invite.status === "pending" &&
+      invite.olympiadId === currentOlympiad.id &&
+      invite.invitedBy === user?.id
+  );
+
+  const handleInvite = async () => {
+    if (!inviteEmail.trim()) return;
+    await inviteToOlympiad(currentOlympiad.id, inviteEmail);
+    setInviteEmail("");
+    toast.success("Invitation envoyée");
+  };
+
+  return (
+    <AppCard>
+      <AppCardHeader>
+        <AppCardTitle>🤝 Membres et invitations</AppCardTitle>
+      </AppCardHeader>
+      <AppCardContent className="space-y-4">
+        <div>
+          <p className="text-xs text-muted-foreground mb-2">
+            Membres ({members.length})
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {members.map((member) => (
+              <span
+                key={member.id}
+                className="text-xs px-2 py-1 rounded-full bg-muted/60"
+              >
+                {member.displayName ?? "Membre"} • {member.role}
+              </span>
+            ))}
+          </div>
+        </div>
+
+        {isOwner && (
+          <div className="space-y-2">
+            <p className="text-xs text-muted-foreground">Inviter un compte</p>
+            <div className="flex gap-2">
+              <AppInput
+                placeholder="email@exemple.com"
+                value={inviteEmail}
+                onChange={(e) => setInviteEmail(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleInvite()}
+                className="flex-1"
+              />
+              <AppButton onClick={handleInvite} size="icon">
+                <Mail className="w-4 h-4" />
+              </AppButton>
+            </div>
+            {pendingInvites.length > 0 && (
+              <div className="text-xs text-muted-foreground">
+                Invitations en attente : {pendingInvites.length}
+              </div>
+            )}
+          </div>
+        )}
+      </AppCardContent>
+    </AppCard>
+  );
+}
+
+// ============================================
 // CREATE OLYMPIAD SECTION
 // ============================================
 function CreateOlympiadSection() {
@@ -136,8 +310,10 @@ function CreateOlympiadSection() {
   const [showAllPlayers, setShowAllPlayers] = useState(false);
 
   const { players, createOlympiad } = useDataContext();
+  const { user } = useAuthContext();
+  const myPlayers = players.filter((player) => player.userId === user?.id);
 
-  const displayedPlayers = showAllPlayers ? players : players.slice(0, 5);
+  const displayedPlayers = showAllPlayers ? myPlayers : myPlayers.slice(0, 5);
 
   const togglePlayer = (id: string) => {
     const newSet = new Set(selectedPlayerIds);
@@ -150,7 +326,7 @@ function CreateOlympiadSection() {
   };
 
   const selectAll = () => {
-    setSelectedPlayerIds(new Set(players.map((p) => p.id)));
+    setSelectedPlayerIds(new Set(myPlayers.map((p) => p.id)));
   };
 
   const handleCreate = async () => {
@@ -180,7 +356,7 @@ function CreateOlympiadSection() {
 
         <div className="mb-3 flex items-center justify-between">
           <span className="text-sm text-muted-foreground">
-            Participants ({selectedPlayerIds.size}/{players.length})
+            Participants ({selectedPlayerIds.size}/{myPlayers.length})
           </span>
           <button
             onClick={selectAll}
@@ -203,12 +379,12 @@ function CreateOlympiadSection() {
           ))}
         </div>
 
-        {players.length > 5 && (
+        {myPlayers.length > 5 && (
           <button
             onClick={() => setShowAllPlayers(!showAllPlayers)}
             className="text-xs text-muted-foreground hover:text-foreground mb-4"
           >
-            {showAllPlayers ? "Afficher moins" : `Afficher tout (${players.length})`}
+            {showAllPlayers ? "Afficher moins" : `Afficher tout (${myPlayers.length})`}
           </button>
         )}
 
@@ -229,9 +405,8 @@ function CreateOlympiadSection() {
 // OLYMPIADS LIST SECTION
 // ============================================
 function OlympiadsListSection() {
-  const { olympiads, currentOlympiadId, setCurrentOlympiad, removeOlympiad, players } = useDataContext();
-
-  const getPlayerName = (id: string) => players.find((p) => p.id === id)?.name ?? "?";
+  const { olympiads, currentOlympiadId, setCurrentOlympiad, removeOlympiad } = useDataContext();
+  const { user } = useAuthContext();
 
   const handleRemove = async (id: string, title: string) => {
     if (confirm(`Supprimer l'olympiade "${title}" ?`)) {
@@ -256,6 +431,7 @@ function OlympiadsListSection() {
         <div className="space-y-3">
           {olympiads.map((olymp) => {
             const isCurrent = olymp.id === currentOlympiadId;
+            const isOwner = olymp.ownerId === user?.id;
             return (
               <div
                 key={olymp.id}
@@ -273,6 +449,9 @@ function OlympiadsListSection() {
                       {new Date(olymp.createdAt).toLocaleDateString("fr-FR")} •{" "}
                       {olymp.playerIds.length} joueurs • {olymp.eventInstances.length} épreuves
                     </p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      {isOwner ? "Propriétaire" : "Partagée"}
+                    </p>
                   </div>
                   <div className="flex items-center gap-1">
                     {isCurrent ? (
@@ -288,12 +467,14 @@ function OlympiadsListSection() {
                         Choisir
                       </AppButton>
                     )}
-                    <button
-                      onClick={() => handleRemove(olymp.id, olymp.title)}
-                      className="p-2 hover:bg-destructive/20 rounded-lg transition-colors"
-                    >
-                      <Trash2 className="w-4 h-4 text-destructive" />
-                    </button>
+                    {isOwner && (
+                      <button
+                        onClick={() => handleRemove(olymp.id, olymp.title)}
+                        className="p-2 hover:bg-destructive/20 rounded-lg transition-colors"
+                      >
+                        <Trash2 className="w-4 h-4 text-destructive" />
+                      </button>
+                    )}
                   </div>
                 </div>
               </div>
@@ -310,6 +491,7 @@ function OlympiadsListSection() {
 // ============================================
 function EventsSection() {
   const { currentOlympiad, activities, addEventInstance, removeEventInstance } = useDataContext();
+  const { user } = useAuthContext();
   const [searchQuery, setSearchQuery] = useState("");
   const [showAddActivity, setShowAddActivity] = useState(false);
 
@@ -321,6 +503,42 @@ function EventsSection() {
           <p className="text-muted-foreground">
             Sélectionne ou crée une olympiade pour gérer les épreuves
           </p>
+        </AppCardContent>
+      </AppCard>
+    );
+  }
+
+  const isOwner = currentOlympiad.ownerId === user?.id;
+  if (!isOwner) {
+    return (
+      <AppCard>
+        <AppCardHeader>
+          <AppCardTitle>
+            🎯 Épreuves de {currentOlympiad.title}
+          </AppCardTitle>
+        </AppCardHeader>
+        <AppCardContent>
+          {currentOlympiad.eventInstances.length === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              Aucune épreuve pour le moment.
+            </p>
+          ) : (
+            <div className="space-y-2">
+              {currentOlympiad.eventInstances.map((event) => (
+                <div
+                  key={event.id}
+                  className="flex items-center justify-between p-3 rounded-xl bg-muted/30 border border-transparent"
+                >
+                  <div className="flex-1 min-w-0">
+                    <span className="font-medium">{event.name}</span>
+                    <p className="text-xs text-muted-foreground">
+                      {EVENT_TYPE_LABELS[event.type]}
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </AppCardContent>
       </AppCard>
     );
@@ -340,6 +558,7 @@ function EventsSection() {
   });
 
   const handleAddInstance = async (activity: typeof activities[0]) => {
+    if (!isOwner) return;
     const teamSize = activity.defaultType === "equipe" 
       ? parseInt(prompt("Taille des équipes (ex: 2 pour 2v2):", "2") || "2", 10)
       : undefined;
@@ -354,6 +573,7 @@ function EventsSection() {
   };
 
   const handleRemoveInstance = async (activity: typeof activities[0]) => {
+    if (!isOwner) return;
     const instances = currentOlympiad.eventInstances.filter((e) => e.templateId === activity.id);
     const lastInstance = instances[instances.length - 1];
     if (lastInstance && confirm(`Retirer "${activity.name}" de cette olympiade ?`)) {
@@ -368,15 +588,22 @@ function EventsSection() {
           <AppCardTitle>
             🎯 Épreuves de {currentOlympiad.title}
           </AppCardTitle>
-          <AppButton
-            variant="ghost"
-            size="sm"
-            onClick={() => setShowAddActivity(!showAddActivity)}
-          >
-            <Plus className="w-4 h-4" />
-          </AppButton>
+          {isOwner && (
+            <AppButton
+              variant="ghost"
+              size="sm"
+              onClick={() => setShowAddActivity(!showAddActivity)}
+            >
+              <Plus className="w-4 h-4" />
+            </AppButton>
+          )}
         </AppCardHeader>
         <AppCardContent>
+          {!isOwner && (
+            <p className="text-xs text-muted-foreground mb-3">
+              Seul le propriétaire peut modifier les épreuves.
+            </p>
+          )}
           <AppInput
             placeholder="Rechercher une épreuve..."
             icon={<Search className="w-4 h-4" />}
@@ -416,22 +643,26 @@ function EventsSection() {
                     </p>
                   </div>
                   <div className="flex gap-1">
-                    {hasInstance && (
-                      <AppButton
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => handleRemoveInstance(activity)}
-                      >
-                        <Minus className="w-4 h-4 text-destructive" />
-                      </AppButton>
+                    {isOwner && (
+                      <>
+                        {hasInstance && (
+                          <AppButton
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => handleRemoveInstance(activity)}
+                          >
+                            <Minus className="w-4 h-4 text-destructive" />
+                          </AppButton>
+                        )}
+                        <AppButton
+                          variant={hasInstance ? "ghost" : "primary"}
+                          size="icon"
+                          onClick={() => handleAddInstance(activity)}
+                        >
+                          <Plus className="w-4 h-4" />
+                        </AppButton>
+                      </>
                     )}
-                    <AppButton
-                      variant={hasInstance ? "ghost" : "primary"}
-                      size="icon"
-                      onClick={() => handleAddInstance(activity)}
-                    >
-                      <Plus className="w-4 h-4" />
-                    </AppButton>
                   </div>
                 </div>
               );
@@ -440,7 +671,7 @@ function EventsSection() {
         </AppCardContent>
       </AppCard>
 
-      {showAddActivity && <AddActivitySection onClose={() => setShowAddActivity(false)} />}
+      {showAddActivity && isOwner && <AddActivitySection onClose={() => setShowAddActivity(false)} />}
     </>
   );
 }

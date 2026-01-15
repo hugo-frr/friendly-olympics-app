@@ -6,6 +6,9 @@ import type {
   IPlayer,
   Activity,
   IOlympiad,
+  AppNotification,
+  OlympiadInvite,
+  OlympiadMember,
   EventType,
   ScoringRule,
   EventInstance,
@@ -29,6 +32,9 @@ export function useSupabaseData() {
   const [players, setPlayers] = useState<IPlayer[]>([]);
   const [activities, setActivities] = useState<Activity[]>([]);
   const [olympiads, setOlympiads] = useState<IOlympiad[]>([]);
+  const [membersByOlympiad, setMembersByOlympiad] = useState<Record<ID, OlympiadMember[]>>({});
+  const [invites, setInvites] = useState<OlympiadInvite[]>([]);
+  const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [currentOlympiadId, setCurrentOlympiadId] = useState<ID | undefined>();
   const [loading, setLoading] = useState(true);
 
@@ -44,7 +50,14 @@ export function useSupabaseData() {
         .select("*")
         .order("created_at", { ascending: true });
       
-      setPlayers(playersData?.map(p => ({ id: p.id, name: p.name })) ?? []);
+      setPlayers(
+        playersData?.map((p) => ({
+          id: p.id,
+          name: p.name,
+          userId: p.user_id,
+          linkedUserId: p.linked_user_id,
+        })) ?? []
+      );
 
       // Fetch activities
       const { data: activitiesData } = await supabase
@@ -86,6 +99,7 @@ export function useSupabaseData() {
       
       const mappedOlympiads = olympiadsData?.map(o => ({
         id: o.id,
+        ownerId: o.user_id,
         title: o.title,
         createdAt: new Date(o.created_at).getTime(),
         playerIds: o.player_ids ?? [],
@@ -94,13 +108,102 @@ export function useSupabaseData() {
       
       setOlympiads(mappedOlympiads);
       
-      // Set current olympiad
-      const current = olympiadsData?.find(o => o.current);
-      setCurrentOlympiadId(current?.id);
+      const olympiadIds = mappedOlympiads.map((o) => o.id);
+      if (olympiadIds.length > 0) {
+        const { data: membershipsData } = await supabase
+          .from("olympiad_memberships")
+          .select("id, olympiad_id, user_id, role")
+          .in("olympiad_id", olympiadIds);
+
+        const memberUserIds = new Set<string>();
+        membershipsData?.forEach((m) => memberUserIds.add(m.user_id));
+        mappedOlympiads.forEach((o) => memberUserIds.add(o.ownerId));
+
+        const { data: profilesData } = await supabase
+          .from("profiles")
+          .select("user_id, display_name")
+          .in("user_id", Array.from(memberUserIds));
+
+        const profileMap = new Map(
+          (profilesData ?? []).map((p) => [p.user_id, p.display_name])
+        );
+
+        const nextMembers: Record<ID, OlympiadMember[]> = {};
+        mappedOlympiads.forEach((olymp) => {
+          const members = (membershipsData ?? [])
+            .filter((m) => m.olympiad_id === olymp.id)
+            .map((m) => ({
+              id: m.id,
+              olympiadId: m.olympiad_id,
+              userId: m.user_id,
+              role: m.role as OlympiadMember["role"],
+              displayName: profileMap.get(m.user_id) ?? null,
+            }));
+
+          if (!members.some((m) => m.userId === olymp.ownerId)) {
+            members.unshift({
+              id: `owner-${olymp.id}`,
+              olympiadId: olymp.id,
+              userId: olymp.ownerId,
+              role: "owner",
+              displayName: profileMap.get(olymp.ownerId) ?? null,
+            });
+          }
+
+          nextMembers[olymp.id] = members;
+        });
+
+        setMembersByOlympiad(nextMembers);
+      } else {
+        setMembersByOlympiad({});
+      }
+
+      const [{ data: invitesData }, { data: notificationsData }] = await Promise.all([
+        supabase
+          .from("olympiad_invites")
+          .select("id, olympiad_id, olympiad_title, invited_email, invited_by, status, created_at")
+          .order("created_at", { ascending: false }),
+        supabase
+          .from("notifications")
+          .select("id, title, body, type, data, created_at, read_at")
+          .order("created_at", { ascending: false }),
+      ]);
+
+      setInvites(
+        (invitesData ?? []).map((invite) => ({
+          id: invite.id,
+          olympiadId: invite.olympiad_id,
+          olympiadTitle: invite.olympiad_title,
+          invitedEmail: invite.invited_email,
+          invitedBy: invite.invited_by,
+          status: invite.status as OlympiadInvite["status"],
+          createdAt: new Date(invite.created_at).getTime(),
+        }))
+      );
+
+      setNotifications(
+        (notificationsData ?? []).map((notification) => ({
+          id: notification.id,
+          title: notification.title,
+          body: notification.body,
+          type: notification.type,
+          data: notification.data as Record<string, unknown> | null,
+          createdAt: new Date(notification.created_at).getTime(),
+          readAt: notification.read_at ? new Date(notification.read_at).getTime() : null,
+        }))
+      );
+
+      // Set current olympiad (only honor the owner's current flag)
+      const current = olympiadsData?.find(o => o.current && o.user_id === user.id);
+      if (current) {
+        setCurrentOlympiadId(current.id);
+      } else if (!currentOlympiadId && mappedOlympiads.length > 0) {
+        setCurrentOlympiadId(mappedOlympiads[0].id);
+      }
     } finally {
       setLoading(false);
     }
-  }, [user]);
+  }, [user, currentOlympiadId]);
 
   useEffect(() => {
     fetchData();
@@ -115,7 +218,15 @@ export function useSupabaseData() {
     const newPlayer = { id: nanoid(8), user_id: user.id, name: trimmedName };
     const { error } = await supabase.from("players").insert(newPlayer);
     if (!error) {
-      setPlayers(prev => [...prev, { id: newPlayer.id, name: newPlayer.name }]);
+      setPlayers((prev) => [
+        ...prev,
+        {
+          id: newPlayer.id,
+          name: newPlayer.name,
+          userId: newPlayer.user_id,
+          linkedUserId: null,
+        },
+      ]);
     }
   };
 
@@ -180,21 +291,42 @@ export function useSupabaseData() {
     if (!error) {
       setOlympiads(prev => [{
         id: newOlympiad.id,
+        ownerId: newOlympiad.user_id,
         title: newOlympiad.title,
         createdAt: Date.now(),
         playerIds: newOlympiad.player_ids,
         eventInstances: [],
       }, ...prev]);
       setCurrentOlympiadId(newOlympiad.id);
+      setMembersByOlympiad((prev) => ({
+        ...prev,
+        [newOlympiad.id]: [
+          {
+            id: `owner-${newOlympiad.id}`,
+            olympiadId: newOlympiad.id,
+            userId: newOlympiad.user_id,
+            role: "owner",
+            displayName: user.email ?? null,
+          },
+        ],
+      }));
       return newOlympiad.id;
     }
     return "";
   };
 
   const removeOlympiad = async (id: ID) => {
+    const olympiad = olympiads.find(o => o.id === id);
+    if (!olympiad || olympiad.ownerId !== user?.id) return;
+
     const { error } = await supabase.from("olympiads").delete().eq("id", id);
     if (!error) {
       setOlympiads(prev => prev.filter(o => o.id !== id));
+      setMembersByOlympiad((prev) => {
+        const { [id]: _removed, ...rest } = prev;
+        return rest;
+      });
+      setInvites((prev) => prev.filter((invite) => invite.olympiadId !== id));
       if (currentOlympiadId === id) {
         setCurrentOlympiadId(undefined);
       }
@@ -204,13 +336,14 @@ export function useSupabaseData() {
   const setCurrentOlympiad = async (id?: ID) => {
     if (!user) return;
     
-    // Reset all current flags
-    await supabase.from("olympiads").update({ current: false }).eq("user_id", user.id);
-    
-    if (id) {
-      await supabase.from("olympiads").update({ current: true }).eq("id", id);
+    const olympiad = id ? olympiads.find(o => o.id === id) : undefined;
+    if (olympiad?.ownerId === user.id) {
+      await supabase.from("olympiads").update({ current: false }).eq("user_id", user.id);
+      if (id) {
+        await supabase.from("olympiads").update({ current: true }).eq("id", id);
+      }
     }
-    
+
     setCurrentOlympiadId(id);
   };
 
@@ -316,12 +449,87 @@ export function useSupabaseData() {
     }
   };
 
+  const inviteToOlympiad = async (olympId: ID, email: string) => {
+    if (!user) return;
+    const trimmedEmail = email.trim().toLowerCase();
+    if (!trimmedEmail) return;
+
+    const olympiad = olympiads.find((o) => o.id === olympId);
+    if (!olympiad || olympiad.ownerId !== user.id) return;
+
+    const { data, error } = await supabase
+      .from("olympiad_invites")
+      .insert({
+        olympiad_id: olympiad.id,
+        olympiad_title: olympiad.title,
+        invited_email: trimmedEmail,
+        invited_by: user.id,
+        status: "pending",
+      })
+      .select()
+      .single();
+
+    if (!error && data) {
+      setInvites((prev) => [
+        {
+          id: data.id,
+          olympiadId: data.olympiad_id,
+          olympiadTitle: data.olympiad_title,
+          invitedEmail: data.invited_email,
+          invitedBy: data.invited_by,
+          status: data.status as OlympiadInvite["status"],
+          createdAt: new Date(data.created_at).getTime(),
+        },
+        ...prev,
+      ]);
+
+      const { error: emailError } = await supabase.functions.invoke("send-olympiad-invite", {
+        body: {
+          olympiadTitle: data.olympiad_title,
+          invitedEmail: data.invited_email,
+          invitedBy: user.email,
+        },
+      });
+      if (emailError) {
+        console.warn("Invite email error:", emailError.message);
+      }
+    }
+  };
+
+  const acceptInvite = async (inviteId: ID) => {
+    if (!user) return;
+    const { error } = await supabase.rpc("accept_olympiad_invite", { invite_id: inviteId });
+    if (!error) {
+      await fetchData();
+    }
+  };
+
+  const markNotificationRead = async (notificationId: ID) => {
+    const { error } = await supabase
+      .from("notifications")
+      .update({ read_at: new Date().toISOString() })
+      .eq("id", notificationId);
+
+    if (!error) {
+      setNotifications((prev) =>
+        prev.map((notification) =>
+          notification.id === notificationId
+            ? { ...notification, readAt: Date.now() }
+            : notification
+        )
+      );
+    }
+  };
+
   const currentOlympiad = olympiads.find(o => o.id === currentOlympiadId);
 
   return {
     players,
     activities,
     olympiads,
+    membersByOlympiad,
+    invites,
+    notifications,
     currentOlympiadId,
     currentOlympiad,
     loading,
@@ -336,6 +544,9 @@ export function useSupabaseData() {
     removeEventInstance,
     addMatch,
     removeMatch,
+    inviteToOlympiad,
+    acceptInvite,
+    markNotificationRead,
     refetch: fetchData,
   };
 }

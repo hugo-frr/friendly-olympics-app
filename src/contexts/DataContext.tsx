@@ -4,6 +4,9 @@ import type {
   IPlayer,
   Activity,
   IOlympiad,
+  AppNotification,
+  OlympiadInvite,
+  OlympiadMember,
   EventType,
   ScoringRule,
   EventResult,
@@ -14,6 +17,9 @@ interface DataContextValue {
   players: IPlayer[];
   activities: Activity[];
   olympiads: IOlympiad[];
+  membersByOlympiad: Record<ID, OlympiadMember[]>;
+  invites: OlympiadInvite[];
+  notifications: AppNotification[];
   currentOlympiadId: ID | undefined;
   currentOlympiad: IOlympiad | undefined;
   loading: boolean;
@@ -34,6 +40,9 @@ interface DataContextValue {
   removeEventInstance: (olympId: ID, instanceId: ID) => Promise<void>;
   addMatch: (olympId: ID, instanceId: ID, result: EventResult) => Promise<void>;
   removeMatch: (olympId: ID, instanceId: ID, matchId: ID) => Promise<void>;
+  inviteToOlympiad: (olympId: ID, email: string) => Promise<void>;
+  acceptInvite: (inviteId: ID) => Promise<void>;
+  markNotificationRead: (notificationId: ID) => Promise<void>;
   refetch: () => Promise<void>;
 }
 

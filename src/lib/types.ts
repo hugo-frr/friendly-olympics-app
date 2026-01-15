@@ -40,14 +40,47 @@ export type EventInstance = {
 export interface IPlayer {
   id: ID;
   name: string;
+  userId: string;
+  linkedUserId?: string | null;
 }
 
 export interface IOlympiad {
   id: ID;
+  ownerId: string;
   title: string;
   createdAt: number;
   playerIds: ID[];
   eventInstances: EventInstance[];
+}
+
+export type OlympiadRole = "owner" | "editor" | "viewer";
+
+export interface OlympiadMember {
+  id: ID;
+  olympiadId: ID;
+  userId: string;
+  role: OlympiadRole;
+  displayName?: string | null;
+}
+
+export interface OlympiadInvite {
+  id: ID;
+  olympiadId: ID;
+  olympiadTitle: string;
+  invitedEmail: string;
+  invitedBy: string;
+  status: "pending" | "accepted" | "declined";
+  createdAt: number;
+}
+
+export interface AppNotification {
+  id: ID;
+  title: string;
+  body?: string | null;
+  type: string;
+  data?: Record<string, unknown> | null;
+  createdAt: number;
+  readAt?: number | null;
 }
 
 export interface IStoreState {
