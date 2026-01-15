@@ -1,6 +1,6 @@
 import { useState, useMemo } from "react";
-import { Trophy, Medal, Target, Crown } from "lucide-react";
-import { useStore, useCurrentOlympiad, usePlayersMap } from "@/store/useStore";
+import { Trophy, Medal, Target, Crown, Loader2 } from "lucide-react";
+import { useDataContext } from "@/contexts/DataContext";
 import {
   computeOlympiadLeaderboard,
   computeLeaderboardForEvent,
@@ -12,10 +12,7 @@ import { cn } from "@/lib/utils";
 import type { ID } from "@/lib/types";
 
 export default function LeaderboardPage() {
-  const currentOlympiad = useCurrentOlympiad();
-  const olympiads = useStore((s) => s.olympiads);
-  const activities = useStore((s) => s.activities);
-  const players = useStore((s) => s.players);
+  const { currentOlympiad, olympiads, activities, players, loading } = useDataContext();
 
   const [selectedEventId, setSelectedEventId] = useState<string>("");
   const [globalEventId, setGlobalEventId] = useState<string>("");
@@ -54,6 +51,16 @@ export default function LeaderboardPage() {
     );
     return activities.filter((a) => templateIds.has(a.id));
   }, [olympiads, activities]);
+
+  if (loading) {
+    return (
+      <PageContainer title="🏅 Classements">
+        <div className="flex items-center justify-center py-12">
+          <Loader2 className="w-8 h-8 animate-spin text-primary" />
+        </div>
+      </PageContainer>
+    );
+  }
 
   return (
     <PageContainer title="🏅 Classements" subtitle="Qui sera le champion ?">

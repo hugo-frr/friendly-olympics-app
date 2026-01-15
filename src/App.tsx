@@ -3,7 +3,11 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { AuthProvider } from "@/contexts/AuthContext";
+import { DataProvider } from "@/contexts/DataContext";
+import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { TabBar } from "@/components/layout/TabBar";
+import AuthPage from "./pages/AuthPage";
 import OlympiadsPage from "./pages/OlympiadsPage";
 import EnterScoresPage from "./pages/EnterScoresPage";
 import LeaderboardPage from "./pages/LeaderboardPage";
@@ -17,13 +21,45 @@ const App = () => (
       <Toaster />
       <Sonner />
       <BrowserRouter>
-        <Routes>
-          <Route path="/" element={<OlympiadsPage />} />
-          <Route path="/enter" element={<EnterScoresPage />} />
-          <Route path="/leaderboard" element={<LeaderboardPage />} />
-          <Route path="*" element={<NotFound />} />
-        </Routes>
-        <TabBar />
+        <AuthProvider>
+          <Routes>
+            <Route path="/auth" element={<AuthPage />} />
+            <Route
+              path="/"
+              element={
+                <ProtectedRoute>
+                  <DataProvider>
+                    <OlympiadsPage />
+                    <TabBar />
+                  </DataProvider>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/enter"
+              element={
+                <ProtectedRoute>
+                  <DataProvider>
+                    <EnterScoresPage />
+                    <TabBar />
+                  </DataProvider>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/leaderboard"
+              element={
+                <ProtectedRoute>
+                  <DataProvider>
+                    <LeaderboardPage />
+                    <TabBar />
+                  </DataProvider>
+                </ProtectedRoute>
+              }
+            />
+            <Route path="*" element={<NotFound />} />
+          </Routes>
+        </AuthProvider>
       </BrowserRouter>
     </TooltipProvider>
   </QueryClientProvider>

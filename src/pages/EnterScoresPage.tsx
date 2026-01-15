@@ -1,6 +1,6 @@
 import { useState, useMemo } from "react";
-import { ChevronUp, ChevronDown, Shuffle, Trash2, Check, History } from "lucide-react";
-import { useStore, useCurrentOlympiad, usePlayersMap } from "@/store/useStore";
+import { ChevronUp, ChevronDown, Shuffle, Trash2, Check, History, Loader2 } from "lucide-react";
+import { useDataContext } from "@/contexts/DataContext";
 import { summarizeResult } from "@/store/scoring";
 import { PageContainer } from "@/components/layout/PageContainer";
 import { AppCard, AppCardHeader, AppCardTitle, AppCardContent } from "@/components/ui/app-card";
@@ -12,8 +12,18 @@ import type { EventResult, EventInstance, ID } from "@/lib/types";
 import { EVENT_TYPE_LABELS } from "@/lib/types";
 
 export default function EnterScoresPage() {
-  const currentOlympiad = useCurrentOlympiad();
+  const { currentOlympiad, loading } = useDataContext();
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
+
+  if (loading) {
+    return (
+      <PageContainer title="✏️ Saisir les scores">
+        <div className="flex items-center justify-center py-12">
+          <Loader2 className="w-8 h-8 animate-spin text-primary" />
+        </div>
+      </PageContainer>
+    );
+  }
 
   if (!currentOlympiad) {
     return (
@@ -132,9 +142,7 @@ function ScoreEntry({ olympiadId, event }: { olympiadId: ID; event: EventInstanc
 // CLASSEMENT ENTRY
 // ============================================
 function ClassementEntry({ olympiadId, event }: { olympiadId: ID; event: EventInstance }) {
-  const currentOlympiad = useCurrentOlympiad();
-  const players = useStore((s) => s.players);
-  const addMatch = useStore((s) => s.addMatch);
+  const { currentOlympiad, players, addMatch } = useDataContext();
 
   const olympiadPlayers = useMemo(() => {
     if (!currentOlympiad) return [];
@@ -159,9 +167,9 @@ function ClassementEntry({ olympiadId, event }: { olympiadId: ID; event: EventIn
     setOrder(newOrder);
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     const result: EventResult = { kind: "classement", order };
-    addMatch(olympiadId, event.id, result);
+    await addMatch(olympiadId, event.id, result);
     // Shuffle for next round
     setOrder([...order].sort(() => Math.random() - 0.5));
   };
@@ -226,9 +234,7 @@ function ClassementEntry({ olympiadId, event }: { olympiadId: ID; event: EventIn
 // DUEL ENTRY
 // ============================================
 function DuelEntry({ olympiadId, event }: { olympiadId: ID; event: EventInstance }) {
-  const currentOlympiad = useCurrentOlympiad();
-  const players = useStore((s) => s.players);
-  const addMatch = useStore((s) => s.addMatch);
+  const { currentOlympiad, players, addMatch } = useDataContext();
 
   const olympiadPlayers = useMemo(() => {
     if (!currentOlympiad) return [];
@@ -246,10 +252,10 @@ function DuelEntry({ olympiadId, event }: { olympiadId: ID; event: EventInstance
     setPlayerB(shuffled[1]?.id ?? "");
   };
 
-  const handleWin = (winner: string, loser: string) => {
+  const handleWin = async (winner: string, loser: string) => {
     if (!winner || !loser || winner === loser) return;
     const result: EventResult = { kind: "duel_1v1", winner, loser };
-    addMatch(olympiadId, event.id, result);
+    await addMatch(olympiadId, event.id, result);
     randomize();
   };
 
@@ -323,9 +329,7 @@ function DuelEntry({ olympiadId, event }: { olympiadId: ID; event: EventInstance
 // EQUIPE ENTRY
 // ============================================
 function EquipeEntry({ olympiadId, event }: { olympiadId: ID; event: EventInstance }) {
-  const currentOlympiad = useCurrentOlympiad();
-  const players = useStore((s) => s.players);
-  const addMatch = useStore((s) => s.addMatch);
+  const { currentOlympiad, players, addMatch } = useDataContext();
 
   const teamSize = event.teamSize ?? 2;
 
@@ -365,14 +369,14 @@ function EquipeEntry({ olympiadId, event }: { olympiadId: ID; event: EventInstan
     setTeamB(new Set(shuffled.slice(teamSize, teamSize * 2).map((p) => p.id)));
   };
 
-  const handleWin = (winnerTeam: Set<string>, loserTeam: Set<string>) => {
+  const handleWin = async (winnerTeam: Set<string>, loserTeam: Set<string>) => {
     if (winnerTeam.size !== teamSize || loserTeam.size !== teamSize) return;
     const result: EventResult = {
       kind: "equipe",
       winnerTeam: { players: Array.from(winnerTeam) },
       loserTeam: { players: Array.from(loserTeam) },
     };
-    addMatch(olympiadId, event.id, result);
+    await addMatch(olympiadId, event.id, result);
     setTeamA(new Set());
     setTeamB(new Set());
   };
@@ -463,9 +467,7 @@ function EquipeEntry({ olympiadId, event }: { olympiadId: ID; event: EventInstan
 // SCORE NUM ENTRY
 // ============================================
 function ScoreNumEntry({ olympiadId, event }: { olympiadId: ID; event: EventInstance }) {
-  const currentOlympiad = useCurrentOlympiad();
-  const players = useStore((s) => s.players);
-  const addMatch = useStore((s) => s.addMatch);
+  const { currentOlympiad, players, addMatch } = useDataContext();
 
   const olympiadPlayers = useMemo(() => {
     if (!currentOlympiad) return [];
@@ -480,7 +482,7 @@ function ScoreNumEntry({ olympiadId, event }: { olympiadId: ID; event: EventInst
     setScores((prev) => ({ ...prev, [playerId]: value }));
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     const entries = olympiadPlayers
       .map((p) => ({
         playerId: p.id,
@@ -491,14 +493,14 @@ function ScoreNumEntry({ olympiadId, event }: { olympiadId: ID; event: EventInst
     if (entries.length === 0) return;
 
     const result: EventResult = { kind: "score_num", entries };
-    addMatch(olympiadId, event.id, result);
+    await addMatch(olympiadId, event.id, result);
     setScores({});
   };
 
   return (
     <AppCard>
       <AppCardHeader>
-        <AppCardTitle>🔢 Score numérique</AppCardTitle>
+        <AppCardTitle>🔢 Scores numériques</AppCardTitle>
       </AppCardHeader>
       <AppCardContent>
         <div className="space-y-3 mb-4">
@@ -508,9 +510,9 @@ function ScoreNumEntry({ olympiadId, event }: { olympiadId: ID; event: EventInst
               <AppInput
                 type="number"
                 placeholder="Score"
-                value={scores[player.id] ?? ""}
+                value={scores[player.id] || ""}
                 onChange={(e) => updateScore(player.id, e.target.value)}
-                className="w-24 text-center"
+                className="w-24"
               />
             </div>
           ))}
@@ -528,14 +530,13 @@ function ScoreNumEntry({ olympiadId, event }: { olympiadId: ID; event: EventInst
 // MATCH HISTORY
 // ============================================
 function MatchHistory({ olympiadId, event }: { olympiadId: ID; event: EventInstance }) {
-  const players = useStore((s) => s.players);
-  const removeMatch = useStore((s) => s.removeMatch);
+  const { players, removeMatch } = useDataContext();
 
   const getPlayerName = (id: string) => players.find((p) => p.id === id)?.name ?? "?";
 
-  const handleRemove = (matchId: string) => {
+  const handleRemove = async (matchId: string) => {
     if (confirm("Supprimer cette manche ?")) {
-      removeMatch(olympiadId, event.id, matchId);
+      await removeMatch(olympiadId, event.id, matchId);
     }
   };
 
@@ -547,29 +548,31 @@ function MatchHistory({ olympiadId, event }: { olympiadId: ID; event: EventInsta
     <AppCard>
       <AppCardHeader>
         <AppCardTitle>
-          <History className="inline-block w-5 h-5 mr-2" />
-          Historique
+          <History className="inline-block w-5 h-5 mr-2 text-muted-foreground" />
+          Historique ({event.matches.length})
         </AppCardTitle>
       </AppCardHeader>
       <AppCardContent>
-        <div className="space-y-2">
-          {event.matches.map((match, index) => (
+        <div className="space-y-2 max-h-60 overflow-y-auto">
+          {[...event.matches].reverse().map((match, index) => (
             <div
               key={match.id}
               className="flex items-center justify-between p-3 bg-muted/30 rounded-xl"
             >
               <div className="flex-1 min-w-0">
-                <p className="font-medium text-sm">Manche {index + 1}</p>
-                <p className="text-xs text-muted-foreground truncate">
-                  {summarizeResult(match.result, getPlayerName)}
-                </p>
-                <p className="text-xs text-muted-foreground">
+                <div className="text-sm font-medium">
+                  Manche {event.matches.length - index}
+                </div>
+                <div className="text-xs text-muted-foreground">
                   {new Date(match.createdAt).toLocaleString("fr-FR")}
-                </p>
+                </div>
+                <div className="text-xs mt-1">
+                  {summarizeResult(match.result, getPlayerName)}
+                </div>
               </div>
               <button
                 onClick={() => handleRemove(match.id)}
-                className="p-2 hover:bg-destructive/20 rounded-lg"
+                className="p-2 hover:bg-destructive/20 rounded-lg transition-colors"
               >
                 <Trash2 className="w-4 h-4 text-destructive" />
               </button>
