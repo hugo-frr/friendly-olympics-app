@@ -39,18 +39,7 @@ function applyRule(points: PointsMap, rule: ScoringRule, result: EventResult): v
       }
       break;
 
-    case "score_num":
-      if (rule.kind === "numeric_rank") {
-        // Sort entries by value
-        const sorted = [...result.entries].sort((a, b) =>
-          rule.higherIsBetter ? b.value - a.value : a.value - b.value
-        );
-        
-        sorted.forEach((entry, index) => {
-          ensurePlayer(points, entry.playerId);
-          points[entry.playerId] += rule.table[index] ?? 0;
-        });
-      }
+    default:
       break;
   }
 }
@@ -160,10 +149,7 @@ export function summarizeResult(
       const losers = result.loserTeam.players.map(getPlayerName).join(" & ");
       return `${winners} battent ${losers}`;
 
-    case "score_num":
-      const sorted = [...result.entries].sort((a, b) => b.value - a.value);
-      const topScore = sorted[0];
-      if (!topScore) return "Aucun score";
-      return `${getPlayerName(topScore.playerId)}: ${topScore.value} pts`;
+    default:
+      return "";
   }
 }

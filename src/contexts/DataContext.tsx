@@ -23,7 +23,9 @@ interface DataContextValue {
   currentOlympiadId: ID | undefined;
   currentOlympiad: IOlympiad | undefined;
   loading: boolean;
-  addPlayer: (name: string) => Promise<void>;
+  addPlayer: (name: string, olympiadId?: ID) => Promise<void>;
+  addPlayerToOlympiad: (olympId: ID, playerId: ID) => Promise<void>;
+  removePlayerFromOlympiad: (olympId: ID, playerId: ID) => Promise<void>;
   removePlayer: (id: ID) => Promise<void>;
   addActivity: (name: string, defaultType: EventType, defaultRule?: ScoringRule) => Promise<void>;
   removeActivity: (id: ID) => Promise<void>;

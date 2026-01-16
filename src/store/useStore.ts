@@ -25,8 +25,8 @@ const DEFAULT_ACTIVITIES: Activity[] = [
   {
     id: "act-flechettes",
     name: "Fléchettes",
-    defaultType: "score_num",
-    defaultRule: { kind: "numeric_rank", higherIsBetter: true, table: [5, 3, 2, 1, 0] },
+    defaultType: "classement",
+    defaultRule: { kind: "placement_table", table: [5, 3, 2, 1, 0] },
   },
   {
     id: "act-volley",

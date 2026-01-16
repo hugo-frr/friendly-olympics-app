@@ -7,6 +7,7 @@ import { AppCard, AppCardHeader, AppCardTitle, AppCardContent } from "@/componen
 import { AppInput } from "@/components/ui/app-input";
 import { AppButton } from "@/components/ui/app-button";
 import { Chip } from "@/components/ui/chip";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { cn } from "@/lib/utils";
 import type { EventResult, EventInstance, ID } from "@/lib/types";
 import { EVENT_TYPE_LABELS } from "@/lib/types";
@@ -95,8 +96,6 @@ function EventDetails({ event }: { event: EventInstance }) {
         return `Barème: ${event.rule.table.join(", ")}`;
       case "per_win":
         return `${event.rule.pointsPerPlayer} pts/victoire`;
-      case "numeric_rank":
-        return `Score ${event.rule.higherIsBetter ? "élevé" : "bas"} = meilleur`;
     }
   };
 
@@ -133,9 +132,8 @@ function ScoreEntry({ olympiadId, event }: { olympiadId: ID; event: EventInstanc
       return <DuelEntry olympiadId={olympiadId} event={event} />;
     case "equipe":
       return <EquipeEntry olympiadId={olympiadId} event={event} />;
-    case "score_num":
-      return <ScoreNumEntry olympiadId={olympiadId} event={event} />;
   }
+  return null;
 }
 
 // ============================================
@@ -464,80 +462,16 @@ function EquipeEntry({ olympiadId, event }: { olympiadId: ID; event: EventInstan
 }
 
 // ============================================
-// SCORE NUM ENTRY
-// ============================================
-function ScoreNumEntry({ olympiadId, event }: { olympiadId: ID; event: EventInstance }) {
-  const { currentOlympiad, players, addMatch } = useDataContext();
-
-  const olympiadPlayers = useMemo(() => {
-    if (!currentOlympiad) return [];
-    return currentOlympiad.playerIds
-      .map((id) => players.find((p) => p.id === id))
-      .filter(Boolean) as typeof players;
-  }, [currentOlympiad, players]);
-
-  const [scores, setScores] = useState<Record<string, string>>({});
-
-  const updateScore = (playerId: string, value: string) => {
-    setScores((prev) => ({ ...prev, [playerId]: value }));
-  };
-
-  const handleSubmit = async () => {
-    const entries = olympiadPlayers
-      .map((p) => ({
-        playerId: p.id,
-        value: parseFloat(scores[p.id] || "0") || 0,
-      }))
-      .filter((e) => e.value !== 0 || scores[e.playerId]);
-
-    if (entries.length === 0) return;
-
-    const result: EventResult = { kind: "score_num", entries };
-    await addMatch(olympiadId, event.id, result);
-    setScores({});
-  };
-
-  return (
-    <AppCard>
-      <AppCardHeader>
-        <AppCardTitle>🔢 Scores numériques</AppCardTitle>
-      </AppCardHeader>
-      <AppCardContent>
-        <div className="space-y-3 mb-4">
-          {olympiadPlayers.map((player) => (
-            <div key={player.id} className="flex items-center gap-3">
-              <span className="flex-1 font-medium">{player.name}</span>
-              <AppInput
-                type="number"
-                placeholder="Score"
-                value={scores[player.id] || ""}
-                onChange={(e) => updateScore(player.id, e.target.value)}
-                className="w-24"
-              />
-            </div>
-          ))}
-        </div>
-        <AppButton onClick={handleSubmit} className="w-full">
-          <Check className="w-4 h-4 mr-2" />
-          Enregistrer la manche
-        </AppButton>
-      </AppCardContent>
-    </AppCard>
-  );
-}
-
-// ============================================
 // MATCH HISTORY
 // ============================================
 function MatchHistory({ olympiadId, event }: { olympiadId: ID; event: EventInstance }) {
   const { players, removeMatch } = useDataContext();
+  const [matchToRemove, setMatchToRemove] = useState<string | null>(null);
 
   const getPlayerName = (id: string) => players.find((p) => p.id === id)?.name ?? "?";
 
   const handleRemove = async (matchId: string) => {
-    if (confirm("Supprimer cette manche ?")) {
-      await removeMatch(olympiadId, event.id, matchId);
-    }
+    setMatchToRemove(matchId);
   };
 
   if (event.matches.length === 0) {
@@ -579,6 +513,17 @@ function MatchHistory({ olympiadId, event }: { olympiadId: ID; event: EventInsta
             </div>
           ))}
         </div>
+        <ConfirmDialog
+          open={!!matchToRemove}
+          title="Supprimer cette manche ?"
+          description="Cette action est définitive."
+          onOpenChange={(open) => !open && setMatchToRemove(null)}
+          onConfirm={async () => {
+            if (!matchToRemove) return;
+            await removeMatch(olympiadId, event.id, matchToRemove);
+            setMatchToRemove(null);
+          }}
+        />
       </AppCardContent>
     </AppCard>
   );

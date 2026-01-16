@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuthContext } from "@/contexts/AuthContext";
 import { nanoid } from "nanoid";
+import { toast } from "sonner";
 import type {
   IPlayer,
   Activity,
@@ -21,7 +22,7 @@ import { Json } from "@/integrations/supabase/types";
 // Default activities for new users
 const DEFAULT_ACTIVITIES: Omit<Activity, "id">[] = [
   { name: "Babyfoot", defaultType: "duel_1v1", defaultRule: { kind: "per_win", pointsPerPlayer: 3 } },
-  { name: "Fléchettes", defaultType: "score_num", defaultRule: { kind: "numeric_rank", higherIsBetter: true, table: [5, 3, 2, 1, 0] } },
+  { name: "Fléchettes", defaultType: "classement", defaultRule: { kind: "placement_table", table: [5, 3, 2, 1, 0] } },
   { name: "Volley", defaultType: "equipe", defaultRule: { kind: "per_win", pointsPerPlayer: 4 } },
   { name: "Course", defaultType: "classement", defaultRule: { kind: "placement_table", table: [10, 7, 5, 3, 2, 1] } },
   { name: "Pétanque", defaultType: "equipe", defaultRule: { kind: "per_win", pointsPerPlayer: 3 } },
@@ -45,27 +46,33 @@ export function useSupabaseData() {
     setLoading(true);
     try {
       // Fetch players
-      const { data: playersData } = await supabase
+      const { data: playersData, error: playersError } = await supabase
         .from("players")
         .select("*")
         .order("created_at", { ascending: true });
-      
-      setPlayers(
-        playersData?.map((p) => ({
-          id: p.id,
-          name: p.name,
-          userId: p.user_id,
-          linkedUserId: p.linked_user_id,
-        })) ?? []
-      );
+
+      if (playersError) {
+        toast.error("Impossible de charger les joueurs.");
+      } else {
+        setPlayers(
+          playersData?.map((p) => ({
+            id: p.id,
+            name: p.name,
+            userId: p.user_id,
+            linkedUserId: p.linked_user_id,
+          })) ?? []
+        );
+      }
 
       // Fetch activities
-      const { data: activitiesData } = await supabase
+      const { data: activitiesData, error: activitiesError } = await supabase
         .from("activities")
         .select("*")
         .order("created_at", { ascending: true });
-      
-      if (activitiesData && activitiesData.length === 0) {
+
+      if (activitiesError) {
+        toast.error("Impossible de charger les activites.");
+      } else if (activitiesData && activitiesData.length === 0) {
         // Create default activities for new users
         const defaultActs = DEFAULT_ACTIVITIES.map(a => ({
           id: nanoid(8),
@@ -92,10 +99,16 @@ export function useSupabaseData() {
       }
 
       // Fetch olympiads
-      const { data: olympiadsData } = await supabase
+      const { data: olympiadsData, error: olympiadsError } = await supabase
         .from("olympiads")
         .select("*")
         .order("created_at", { ascending: false });
+
+      if (olympiadsError) {
+        console.error("Olympiads fetch error:", olympiadsError);
+        toast.error(`Impossible de charger les olympiades: ${olympiadsError.message}`);
+        return;
+      }
       
       const mappedOlympiads = olympiadsData?.map(o => ({
         id: o.id,
@@ -110,19 +123,25 @@ export function useSupabaseData() {
       
       const olympiadIds = mappedOlympiads.map((o) => o.id);
       if (olympiadIds.length > 0) {
-        const { data: membershipsData } = await supabase
+        const { data: membershipsData, error: membershipsError } = await supabase
           .from("olympiad_memberships")
           .select("id, olympiad_id, user_id, role")
           .in("olympiad_id", olympiadIds);
+        if (membershipsError) {
+          toast.error("Impossible de charger les membres.");
+        }
 
         const memberUserIds = new Set<string>();
         membershipsData?.forEach((m) => memberUserIds.add(m.user_id));
         mappedOlympiads.forEach((o) => memberUserIds.add(o.ownerId));
 
-        const { data: profilesData } = await supabase
+        const { data: profilesData, error: profilesError } = await supabase
           .from("profiles")
           .select("user_id, display_name")
           .in("user_id", Array.from(memberUserIds));
+        if (profilesError) {
+          toast.error("Impossible de charger les profils.");
+        }
 
         const profileMap = new Map(
           (profilesData ?? []).map((p) => [p.user_id, p.display_name])
@@ -158,7 +177,10 @@ export function useSupabaseData() {
         setMembersByOlympiad({});
       }
 
-      const [{ data: invitesData }, { data: notificationsData }] = await Promise.all([
+      const [
+        { data: invitesData, error: invitesError },
+        { data: notificationsData, error: notificationsError },
+      ] = await Promise.all([
         supabase
           .from("olympiad_invites")
           .select("id, olympiad_id, olympiad_title, invited_email, invited_by, status, created_at")
@@ -168,6 +190,13 @@ export function useSupabaseData() {
           .select("id, title, body, type, data, created_at, read_at")
           .order("created_at", { ascending: false }),
       ]);
+
+      if (invitesError) {
+        toast.error("Impossible de charger les invitations.");
+      }
+      if (notificationsError) {
+        toast.error("Impossible de charger les notifications.");
+      }
 
       setInvites(
         (invitesData ?? []).map((invite) => ({
@@ -210,7 +239,107 @@ export function useSupabaseData() {
   }, [fetchData]);
 
   // Player actions
-  const addPlayer = async (name: string) => {
+  const addPlayerToOlympiad = async (olympId: ID, playerId: ID) => {
+    const olympiad = olympiads.find((o) => o.id === olympId);
+    if (!olympiad) return;
+    if (olympiad.playerIds.includes(playerId)) return;
+    const player = players.find((p) => p.id === playerId);
+
+    const updatedPlayerIds = [...olympiad.playerIds, playerId];
+    const { error } = await supabase
+      .from("olympiads")
+      .update({ player_ids: updatedPlayerIds })
+      .eq("id", olympId);
+
+    if (error) {
+      toast.error("Impossible d'ajouter le joueur a l'olympiade.");
+      return;
+    }
+
+    setOlympiads((prev) =>
+      prev.map((o) => (o.id === olympId ? { ...o, playerIds: updatedPlayerIds } : o))
+    );
+
+    if (player?.linkedUserId) {
+      const { error: membershipError } = await supabase
+        .from("olympiad_memberships")
+        .upsert(
+          {
+            olympiad_id: olympiad.id,
+            user_id: player.linkedUserId,
+            role: "editor",
+          },
+          { onConflict: "olympiad_id,user_id" }
+        );
+
+      if (membershipError) {
+        toast.error("Impossible d'ajouter l'utilisateur a l'olympiade.");
+        return;
+      }
+
+      setMembersByOlympiad((prev) => {
+        const existing = prev[olympId] ?? [];
+        if (existing.some((m) => m.userId === player.linkedUserId)) {
+          return prev;
+        }
+        return {
+          ...prev,
+          [olympId]: [
+            ...existing,
+            {
+              id: `linked-${olympId}-${player.linkedUserId}`,
+              olympiadId: olympiad.id,
+              userId: player.linkedUserId,
+              role: "editor",
+              displayName: player.name,
+            },
+          ],
+        };
+      });
+    }
+  };
+
+  const removePlayerFromOlympiad = async (olympId: ID, playerId: ID) => {
+    const olympiad = olympiads.find((o) => o.id === olympId);
+    if (!olympiad) return;
+    if (!olympiad.playerIds.includes(playerId)) return;
+    const player = players.find((p) => p.id === playerId);
+
+    const updatedPlayerIds = olympiad.playerIds.filter((id) => id !== playerId);
+    const { error } = await supabase
+      .from("olympiads")
+      .update({ player_ids: updatedPlayerIds })
+      .eq("id", olympId);
+
+    if (error) {
+      toast.error("Impossible de retirer le joueur de l'olympiade.");
+      return;
+    }
+
+    setOlympiads((prev) =>
+      prev.map((o) => (o.id === olympId ? { ...o, playerIds: updatedPlayerIds } : o))
+    );
+
+    if (player?.linkedUserId) {
+      const { error: membershipError } = await supabase
+        .from("olympiad_memberships")
+        .delete()
+        .eq("olympiad_id", olympiad.id)
+        .eq("user_id", player.linkedUserId);
+
+      if (membershipError) {
+        toast.error("Impossible de retirer l'utilisateur de l'olympiade.");
+        return;
+      }
+
+      setMembersByOlympiad((prev) => ({
+        ...prev,
+        [olympId]: (prev[olympId] ?? []).filter((m) => m.userId !== player.linkedUserId),
+      }));
+    }
+  };
+
+  const addPlayer = async (name: string, olympiadId?: ID) => {
     if (!user) return;
     const trimmedName = name.trim();
     if (!trimmedName) return;
@@ -227,6 +356,9 @@ export function useSupabaseData() {
           linkedUserId: null,
         },
       ]);
+      if (olympiadId) {
+        await addPlayerToOlympiad(olympiadId, newPlayer.id);
+      }
     }
   };
 
@@ -273,7 +405,7 @@ export function useSupabaseData() {
   const createOlympiad = async (title: string, playerIds: ID[]): Promise<ID> => {
     if (!user) return "";
     const trimmedTitle = title.trim();
-    if (!trimmedTitle || playerIds.length === 0) return "";
+    if (!trimmedTitle) return "";
 
     // Reset current flag on all other olympiads
     await supabase.from("olympiads").update({ current: false }).eq("user_id", user.id);
@@ -310,8 +442,10 @@ export function useSupabaseData() {
           },
         ],
       }));
+      await fetchData();
       return newOlympiad.id;
     }
+    toast.error("Impossible de creer l'olympiade.");
     return "";
   };
 
@@ -534,6 +668,8 @@ export function useSupabaseData() {
     currentOlympiad,
     loading,
     addPlayer,
+    addPlayerToOlympiad,
+    removePlayerFromOlympiad,
     removePlayer,
     addActivity,
     removeActivity,

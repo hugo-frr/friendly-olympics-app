@@ -1,11 +1,10 @@
 export type ID = string;
 
-export type EventType = "classement" | "duel_1v1" | "equipe" | "score_num";
+export type EventType = "classement" | "duel_1v1" | "equipe";
 
 export type ScoringRule =
   | { kind: "placement_table"; table: number[] }
-  | { kind: "per_win"; pointsPerPlayer: number }
-  | { kind: "numeric_rank"; higherIsBetter: boolean; table: number[] };
+  | { kind: "per_win"; pointsPerPlayer: number };
 
 export type Activity = {
   id: ID;
@@ -18,8 +17,7 @@ export type Activity = {
 export type EventResult =
   | { kind: "classement"; order: ID[] }
   | { kind: "duel_1v1"; winner: ID; loser: ID }
-  | { kind: "equipe"; winnerTeam: { players: ID[] }; loserTeam: { players: ID[] } }
-  | { kind: "score_num"; entries: { playerId: ID; value: number }[] };
+  | { kind: "equipe"; winnerTeam: { players: ID[] }; loserTeam: { players: ID[] } };
 
 export type Match = {
   id: ID;
@@ -118,11 +116,9 @@ export const EVENT_TYPE_LABELS: Record<EventType, string> = {
   classement: "Classement",
   duel_1v1: "Duel 1v1",
   equipe: "Équipe",
-  score_num: "Score numérique",
 };
 
 export const SCORING_RULE_LABELS = {
   placement_table: "Barème par place",
   per_win: "Points par victoire",
-  numeric_rank: "Classement numérique",
 } as const;

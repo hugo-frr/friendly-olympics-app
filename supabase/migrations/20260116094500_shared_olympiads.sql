@@ -40,19 +40,6 @@ WITH CHECK (
   )
 );
 
-CREATE POLICY "Users can join olympiads via invite"
-ON public.olympiad_memberships FOR INSERT
-WITH CHECK (
-  user_id = auth.uid()
-  AND EXISTS (
-    SELECT 1
-    FROM public.olympiad_invites i
-    WHERE i.olympiad_id = olympiad_memberships.olympiad_id
-      AND lower(i.invited_email) = lower(auth.jwt() ->> 'email')
-      AND i.status = 'pending'
-  )
-);
-
 CREATE TABLE public.olympiad_invites (
   id UUID NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
   olympiad_id TEXT NOT NULL REFERENCES public.olympiads(id) ON DELETE CASCADE,
@@ -98,6 +85,19 @@ USING (
     FROM public.olympiads o
     WHERE o.id = olympiad_invites.olympiad_id
       AND o.user_id = auth.uid()
+  )
+);
+
+CREATE POLICY "Users can join olympiads via invite"
+ON public.olympiad_memberships FOR INSERT
+WITH CHECK (
+  user_id = auth.uid()
+  AND EXISTS (
+    SELECT 1
+    FROM public.olympiad_invites i
+    WHERE i.olympiad_id = olympiad_memberships.olympiad_id
+      AND lower(i.invited_email) = lower(auth.jwt() ->> 'email')
+      AND i.status = 'pending'
   )
 );
 
