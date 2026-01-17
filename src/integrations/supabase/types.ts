@@ -41,93 +41,6 @@ export type Database = {
         }
         Relationships: []
       }
-      notifications: {
-        Row: {
-          body: string | null
-          created_at: string
-          data: Json | null
-          id: string
-          read_at: string | null
-          title: string
-          type: string
-          user_id: string
-        }
-        Insert: {
-          body?: string | null
-          created_at?: string
-          data?: Json | null
-          id?: string
-          read_at?: string | null
-          title: string
-          type?: string
-          user_id: string
-        }
-        Update: {
-          body?: string | null
-          created_at?: string
-          data?: Json | null
-          id?: string
-          read_at?: string | null
-          title?: string
-          type?: string
-          user_id?: string
-        }
-        Relationships: []
-      }
-      olympiad_invites: {
-        Row: {
-          created_at: string
-          id: string
-          invited_by: string
-          invited_email: string
-          olympiad_id: string
-          olympiad_title: string
-          status: string
-        }
-        Insert: {
-          created_at?: string
-          id?: string
-          invited_by: string
-          invited_email: string
-          olympiad_id: string
-          olympiad_title: string
-          status?: string
-        }
-        Update: {
-          created_at?: string
-          id?: string
-          invited_by?: string
-          invited_email?: string
-          olympiad_id?: string
-          olympiad_title?: string
-          status?: string
-        }
-        Relationships: []
-      }
-      olympiad_memberships: {
-        Row: {
-          created_at: string
-          id: string
-          olympiad_id: string
-          role: string
-          user_id: string
-        }
-        Insert: {
-          created_at?: string
-          id?: string
-          olympiad_id: string
-          role?: string
-          user_id: string
-        }
-        Update: {
-          created_at?: string
-          id?: string
-          olympiad_id?: string
-          role?: string
-          user_id?: string
-        }
-        Relationships: []
-      }
       olympiads: {
         Row: {
           created_at: string
@@ -165,21 +78,18 @@ export type Database = {
         Row: {
           created_at: string
           id: string
-          linked_user_id: string | null
           name: string
           user_id: string
         }
         Insert: {
           created_at?: string
           id: string
-          linked_user_id?: string | null
           name: string
           user_id: string
         }
         Update: {
           created_at?: string
           id?: string
-          linked_user_id?: string | null
           name?: string
           user_id?: string
         }
