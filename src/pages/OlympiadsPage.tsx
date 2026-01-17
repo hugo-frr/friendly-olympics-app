@@ -176,8 +176,13 @@ function ParticipantsSection() {
     ? players.filter((player) => currentOlympiad.playerIds.includes(player.id))
     : [];
   const olympiadMembers = currentOlympiad ? membersByOlympiad[currentOlympiad.id] ?? [] : [];
-  const ownerLabel =
-    olympiadMembers.find((member) => member.role === "owner")?.displayName ?? "Organisateur";
+  const ownerId = currentOlympiad?.ownerId;
+  const ownerFromFriend = ownerId
+    ? players.find((player) => player.userId === user?.id && player.linkedUserId === ownerId)?.name
+    : null;
+  const ownerFromMembers =
+    olympiadMembers.find((member) => member.role === "owner")?.displayName ?? null;
+  const ownerLabel = ownerFromFriend ?? ownerFromMembers ?? "Organisateur";
   const participantIds = new Set(olympiadPlayers.map((player) => player.id));
   const myPlayers = players.filter((player) => player.userId === user?.id);
   const linkedPlayers = myPlayers.filter((player) => player.linkedUserId);
@@ -354,7 +359,8 @@ function ParticipantsSection() {
         {!isOwner && currentOlympiad && (
           <div className="space-y-3">
             <div className="rounded-lg border border-primary/20 bg-primary/5 px-3 py-2 text-xs text-primary">
-              Tu participes à cette olympiade. Organisateur : {ownerLabel}
+              Tu participes à l'olympiade de{" "}
+              {ownerLabel}
             </div>
             <div>
               <p className="text-xs text-muted-foreground mb-2">
