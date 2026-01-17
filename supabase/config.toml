@@ -1,1 +1,10 @@
 project_id = "igfnukhlpvcjhxnfkizg"
+
+[functions.send-olympiad-invite]
+verify_jwt = false
+
+[functions.stripe-create-checkout]
+verify_jwt = false
+
+[functions.stripe-check-subscription]
+verify_jwt = false

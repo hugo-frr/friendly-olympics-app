@@ -1,5 +1,5 @@
 import { serve } from "https://deno.land/std@0.192.0/http/server.ts";
-import { SMTPClient } from "https://deno.land/x/smtp@v0.7.0/mod.ts";
+import { SmtpClient } from "https://deno.land/x/smtp@v0.7.0/mod.ts";
 
 type InvitePayload = {
   olympiadTitle: string;
@@ -31,16 +31,12 @@ serve(async (req) => {
     return new Response("SMTP not configured", { status: 500, headers: corsHeaders });
   }
 
-  const smtpClient = new SMTPClient({
-    connection: {
-      hostname: smtpHost,
-      port: smtpPort,
-      tls: true,
-      auth: {
-        username: smtpUser,
-        password: smtpPass,
-      },
-    },
+  const smtpClient = new SmtpClient();
+  await smtpClient.connectTLS({
+    hostname: smtpHost,
+    port: smtpPort,
+    username: smtpUser,
+    password: smtpPass,
   });
 
   const from = smtpFrom;

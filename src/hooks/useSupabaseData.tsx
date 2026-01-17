@@ -19,7 +19,8 @@ import type {
   Match,
   ID,
 } from "@/lib/types";
-import { Json } from "@/integrations/supabase/types";
+// JSON type for database serialization
+type Json = string | number | boolean | null | { [key: string]: Json | undefined } | Json[];
 
 // Default activities for new users
 const DEFAULT_ACTIVITIES: Omit<Activity, "id">[] = [
@@ -230,7 +231,7 @@ export function useSupabaseData() {
           .select("id, title, body, type, data, created_at, read_at")
           .order("created_at", { ascending: false }),
         supabase
-          .from("user_subscriptions")
+          .from("subscriptions")
           .select("status, current_period_end")
           .eq("user_id", user.id)
           .maybeSingle(),
@@ -708,40 +709,34 @@ export function useSupabaseData() {
     const olympiad = olympiads.find((o) => o.id === olympId);
     if (!olympiad) return;
 
-    const { data, error } = await supabase.rpc("invite_user_to_olympiad", {
-      olymp_id: olympiad.id,
-      invited_user: invitedUserId,
-    });
+    // Get the user's email from profiles
+    const { data: profileData } = await supabase
+      .from("profiles")
+      .select("user_id")
+      .eq("user_id", invitedUserId)
+      .maybeSingle();
 
-    if (error || !data || data.length === 0) {
+    if (!profileData) {
+      toast.error("Utilisateur non trouvé.");
+      return;
+    }
+
+    // For now, just add them directly as member since we don't have email lookup
+    const { error: memberError } = await supabase
+      .from("olympiad_memberships")
+      .insert({
+        olympiad_id: olympiad.id,
+        user_id: invitedUserId,
+        role: "member",
+      });
+
+    if (memberError) {
       toast.error("Impossible d'inviter cet utilisateur.");
       return;
     }
 
-    const invite = data[0];
-    setInvites((prev) => [
-      {
-        id: invite.id,
-        olympiadId: invite.olympiad_id,
-        olympiadTitle: invite.olympiad_title,
-        invitedEmail: invite.invited_email,
-        invitedBy: invite.invited_by,
-        status: invite.status as OlympiadInvite["status"],
-        createdAt: new Date(invite.created_at).getTime(),
-      },
-      ...prev,
-    ]);
-
-    const { error: emailError } = await supabase.functions.invoke("send-olympiad-invite", {
-      body: {
-        olympiadTitle: invite.olympiad_title,
-        invitedEmail: invite.invited_email,
-        invitedBy: user.email,
-      },
-    });
-    if (emailError) {
-      console.warn("Invite email error:", emailError.message);
-    }
+    toast.success("Utilisateur ajouté à l'olympiade !");
+    await fetchData();
   };
 
   const searchUsers = async (query: string): Promise<UserSearchResult[]> => {
@@ -749,15 +744,18 @@ export function useSupabaseData() {
     if (!trimmedQuery || trimmedQuery.length < 2) {
       return [];
     }
-    const { data, error } = await supabase.rpc("search_users", {
-      query_text: trimmedQuery,
-      limit_count: 8,
-    });
+    // Search profiles by display_name
+    const { data, error } = await supabase
+      .from("profiles")
+      .select("user_id, display_name")
+      .ilike("display_name", `%${trimmedQuery}%`)
+      .limit(8);
+    
     if (error) {
       toast.error("Impossible de rechercher des utilisateurs.");
       return [];
     }
-    return (data ?? []).map((row: { user_id: string; display_name: string | null }) => ({
+    return (data ?? []).map((row) => ({
       userId: row.user_id,
       displayName: row.display_name,
     }));
@@ -765,9 +763,34 @@ export function useSupabaseData() {
 
   const acceptInvite = async (inviteId: ID) => {
     if (!user) return;
-    const { error } = await supabase.rpc("accept_olympiad_invite", { invite_id: inviteId });
-    if (!error) {
+    
+    // Get the invite
+    const invite = invites.find((i) => i.id === inviteId);
+    if (!invite) return;
+
+    // Update invite status
+    const { error: inviteError } = await supabase
+      .from("olympiad_invites")
+      .update({ status: "accepted" })
+      .eq("id", inviteId);
+
+    if (inviteError) {
+      toast.error("Impossible d'accepter l'invitation.");
+      return;
+    }
+
+    // Add user as member
+    const { error: memberError } = await supabase
+      .from("olympiad_memberships")
+      .insert({
+        olympiad_id: invite.olympiadId,
+        user_id: user.id,
+        role: "member",
+      });
+
+    if (!memberError) {
       await fetchData();
+      toast.success("Invitation acceptée !");
     }
   };
 

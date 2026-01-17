@@ -1,135 +1,385 @@
-export type ID = string;
+export type Json =
+  | string
+  | number
+  | boolean
+  | null
+  | { [key: string]: Json | undefined }
+  | Json[]
 
-export type EventType = "classement" | "duel_1v1" | "equipe";
-
-export type ScoringRule =
-  | { kind: "placement_table"; table: number[] }
-  | { kind: "per_win"; pointsPerPlayer: number };
-
-export type Activity = {
-  id: ID;
-  name: string;
-  defaultRule?: ScoringRule;
-  defaultType: EventType;
-  supportedTypes?: EventType[];
-};
-
-export type EventResult =
-  | { kind: "classement"; order: ID[] }
-  | { kind: "duel_1v1"; winner: ID; loser: ID }
-  | { kind: "equipe"; winnerTeam: { players: ID[] }; loserTeam: { players: ID[] } };
-
-export type Match = {
-  id: ID;
-  createdAt: number;
-  result: EventResult;
-};
-
-export type EventInstance = {
-  id: ID;
-  templateId: ID;
-  name: string;
-  type: EventType;
-  rule: ScoringRule;
-  teamSize?: number;
-  matches: Match[];
-};
-
-export interface IPlayer {
-  id: ID;
-  name: string;
-  userId: string;
-  linkedUserId?: string | null;
+export type Database = {
+  // Allows to automatically instantiate createClient with right options
+  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
+  __InternalSupabase: {
+    PostgrestVersion: "14.1"
+  }
+  public: {
+    Tables: {
+      activities: {
+        Row: {
+          created_at: string
+          default_rule: Json | null
+          default_type: string
+          id: string
+          name: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          default_rule?: Json | null
+          default_type: string
+          id: string
+          name: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          default_rule?: Json | null
+          default_type?: string
+          id?: string
+          name?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      notifications: {
+        Row: {
+          body: string | null
+          created_at: string
+          data: Json | null
+          id: string
+          read_at: string | null
+          title: string
+          type: string
+          user_id: string
+        }
+        Insert: {
+          body?: string | null
+          created_at?: string
+          data?: Json | null
+          id?: string
+          read_at?: string | null
+          title: string
+          type?: string
+          user_id: string
+        }
+        Update: {
+          body?: string | null
+          created_at?: string
+          data?: Json | null
+          id?: string
+          read_at?: string | null
+          title?: string
+          type?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      olympiad_invites: {
+        Row: {
+          created_at: string
+          id: string
+          invited_by: string
+          invited_email: string
+          olympiad_id: string
+          olympiad_title: string
+          status: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          invited_by: string
+          invited_email: string
+          olympiad_id: string
+          olympiad_title: string
+          status?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          invited_by?: string
+          invited_email?: string
+          olympiad_id?: string
+          olympiad_title?: string
+          status?: string
+        }
+        Relationships: []
+      }
+      olympiad_memberships: {
+        Row: {
+          created_at: string
+          id: string
+          olympiad_id: string
+          role: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          olympiad_id: string
+          role?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          olympiad_id?: string
+          role?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      olympiads: {
+        Row: {
+          created_at: string
+          current: boolean
+          event_instances: Json
+          id: string
+          player_ids: string[]
+          title: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          current?: boolean
+          event_instances?: Json
+          id: string
+          player_ids?: string[]
+          title: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          current?: boolean
+          event_instances?: Json
+          id?: string
+          player_ids?: string[]
+          title?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      players: {
+        Row: {
+          created_at: string
+          id: string
+          linked_user_id: string | null
+          name: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id: string
+          linked_user_id?: string | null
+          name: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          linked_user_id?: string | null
+          name?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      profiles: {
+        Row: {
+          created_at: string
+          display_name: string | null
+          id: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          display_name?: string | null
+          id?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          display_name?: string | null
+          id?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      subscriptions: {
+        Row: {
+          created_at: string
+          current_period_end: string | null
+          current_period_start: string | null
+          id: string
+          status: string
+          stripe_customer_id: string | null
+          stripe_subscription_id: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          current_period_end?: string | null
+          current_period_start?: string | null
+          id?: string
+          status?: string
+          stripe_customer_id?: string | null
+          stripe_subscription_id?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          current_period_end?: string | null
+          current_period_start?: string | null
+          id?: string
+          status?: string
+          stripe_customer_id?: string | null
+          stripe_subscription_id?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+    }
+    Views: {
+      [_ in never]: never
+    }
+    Functions: {
+      [_ in never]: never
+    }
+    Enums: {
+      [_ in never]: never
+    }
+    CompositeTypes: {
+      [_ in never]: never
+    }
+  }
 }
 
-export interface IOlympiad {
-  id: ID;
-  ownerId: string;
-  title: string;
-  createdAt: number;
-  playerIds: ID[];
-  eventInstances: EventInstance[];
+type DatabaseWithoutInternals = Omit<Database, "__InternalSupabase">
+
+type DefaultSchema = DatabaseWithoutInternals[Extract<keyof Database, "public">]
+
+export type Tables<
+  DefaultSchemaTableNameOrOptions extends
+    | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
+    | { schema: keyof DatabaseWithoutInternals },
+  TableName extends DefaultSchemaTableNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
+        DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
+    : never = never,
+> = DefaultSchemaTableNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
 }
+  ? (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
+      DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])[TableName] extends {
+      Row: infer R
+    }
+    ? R
+    : never
+  : DefaultSchemaTableNameOrOptions extends keyof (DefaultSchema["Tables"] &
+        DefaultSchema["Views"])
+    ? (DefaultSchema["Tables"] &
+        DefaultSchema["Views"])[DefaultSchemaTableNameOrOptions] extends {
+        Row: infer R
+      }
+      ? R
+      : never
+    : never
 
-export type OlympiadRole = "owner" | "editor" | "viewer";
-
-export interface OlympiadMember {
-  id: ID;
-  olympiadId: ID;
-  userId: string;
-  role: OlympiadRole;
-  displayName?: string | null;
+export type TablesInsert<
+  DefaultSchemaTableNameOrOptions extends
+    | keyof DefaultSchema["Tables"]
+    | { schema: keyof DatabaseWithoutInternals },
+  TableName extends DefaultSchemaTableNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
+    : never = never,
+> = DefaultSchemaTableNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
 }
+  ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
+      Insert: infer I
+    }
+    ? I
+    : never
+  : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema["Tables"]
+    ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
+        Insert: infer I
+      }
+      ? I
+      : never
+    : never
 
-export interface OlympiadInvite {
-  id: ID;
-  olympiadId: ID;
-  olympiadTitle: string;
-  invitedEmail: string;
-  invitedBy: string;
-  status: "pending" | "accepted" | "declined";
-  createdAt: number;
+export type TablesUpdate<
+  DefaultSchemaTableNameOrOptions extends
+    | keyof DefaultSchema["Tables"]
+    | { schema: keyof DatabaseWithoutInternals },
+  TableName extends DefaultSchemaTableNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
+    : never = never,
+> = DefaultSchemaTableNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
 }
+  ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
+      Update: infer U
+    }
+    ? U
+    : never
+  : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema["Tables"]
+    ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
+        Update: infer U
+      }
+      ? U
+      : never
+    : never
 
-export interface AppNotification {
-  id: ID;
-  title: string;
-  body?: string | null;
-  type: string;
-  data?: Record<string, unknown> | null;
-  createdAt: number;
-  readAt?: number | null;
+export type Enums<
+  DefaultSchemaEnumNameOrOptions extends
+    | keyof DefaultSchema["Enums"]
+    | { schema: keyof DatabaseWithoutInternals },
+  EnumName extends DefaultSchemaEnumNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
+    : never = never,
+> = DefaultSchemaEnumNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
 }
+  ? DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"][EnumName]
+  : DefaultSchemaEnumNameOrOptions extends keyof DefaultSchema["Enums"]
+    ? DefaultSchema["Enums"][DefaultSchemaEnumNameOrOptions]
+    : never
 
-export interface UserSubscription {
-  status?: string | null;
-  isActive: boolean;
-  currentPeriodEnd?: number | null;
+export type CompositeTypes<
+  PublicCompositeTypeNameOrOptions extends
+    | keyof DefaultSchema["CompositeTypes"]
+    | { schema: keyof DatabaseWithoutInternals },
+  CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
+    : never = never,
+> = PublicCompositeTypeNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
 }
+  ? DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"][CompositeTypeName]
+  : PublicCompositeTypeNameOrOptions extends keyof DefaultSchema["CompositeTypes"]
+    ? DefaultSchema["CompositeTypes"][PublicCompositeTypeNameOrOptions]
+    : never
 
-export interface UserSearchResult {
-  userId: string;
-  displayName: string | null;
-}
-
-export interface IStoreState {
-  players: IPlayer[];
-  activities: Activity[];
-  olympiads: IOlympiad[];
-  currentOlympiadId?: ID;
-
-  addPlayer: (name: string) => void;
-  removePlayer: (id: ID) => void;
-
-  addActivity: (name: string, defaultType: EventType, defaultRule?: ScoringRule) => void;
-  removeActivity: (id: ID) => void;
-
-  createOlympiad: (title: string, playerIds: ID[]) => ID;
-  removeOlympiad: (id: ID) => void;
-  setCurrentOlympiad: (id?: ID) => void;
-
-  addEventInstance: (olympId: ID, cfg: {
-    templateId: ID;
-    name: string;
-    type: EventType;
-    rule: ScoringRule;
-    teamSize?: number;
-  }) => void;
-
-  removeEventInstance: (olympId: ID, instanceId: ID) => void;
-
-  addMatch: (olympId: ID, instanceId: ID, result: EventResult) => void;
-  removeMatch: (olympId: ID, instanceId: ID, matchId: ID) => void;
-}
-
-// Helper types for UI
-export const EVENT_TYPE_LABELS: Record<EventType, string> = {
-  classement: "Classement",
-  duel_1v1: "Duel 1v1",
-  equipe: "Équipe",
-};
-
-export const SCORING_RULE_LABELS = {
-  placement_table: "Barème par place",
-  per_win: "Points par victoire",
-} as const;
+export const Constants = {
+  public: {
+    Enums: {},
+  },
+} as const
