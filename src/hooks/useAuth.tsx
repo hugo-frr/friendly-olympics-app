@@ -28,12 +28,15 @@ export function useAuth() {
   }, []);
 
   const signUp = async (email: string, password: string, displayName?: string) => {
+    if (!displayName || !displayName.trim()) {
+      return { data: null, error: { message: "Le pseudo est obligatoire." } };
+    }
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
       options: {
         emailRedirectTo: window.location.origin,
-        data: { display_name: displayName },
+        data: { display_name: displayName.trim() },
       },
     });
     return { data, error };

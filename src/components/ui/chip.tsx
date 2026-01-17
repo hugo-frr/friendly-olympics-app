@@ -13,7 +13,7 @@ const Chip = React.forwardRef<HTMLButtonElement, ChipProps>(
         ref={ref}
         className={cn(
           "inline-flex items-center px-3 py-1.5 rounded-full text-sm font-medium transition-all duration-200",
-          "focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-background",
+          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
           "active:scale-95",
           {
             // Default variant

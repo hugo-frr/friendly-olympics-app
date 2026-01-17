@@ -81,6 +81,17 @@ export interface AppNotification {
   readAt?: number | null;
 }
 
+export interface UserSubscription {
+  status?: string | null;
+  isActive: boolean;
+  currentPeriodEnd?: number | null;
+}
+
+export interface UserSearchResult {
+  userId: string;
+  displayName: string | null;
+}
+
 export interface IStoreState {
   players: IPlayer[];
   activities: Activity[];

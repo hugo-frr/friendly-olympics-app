@@ -5,7 +5,7 @@ import { cn } from "@/lib/utils";
 const tabs = [
   { path: "/", label: "Olympiades", icon: Trophy },
   { path: "/enter", label: "Scores", icon: PenLine },
-  { path: "/leaderboard", label: "Classement", icon: Medal },
+  { path: "/leaderboard", label: "Résultats", icon: Medal },
 ];
 
 export function TabBar() {

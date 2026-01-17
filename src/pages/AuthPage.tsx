@@ -30,7 +30,13 @@ export default function AuthPage() {
           navigate("/");
         }
       } else {
-        const { error } = await signUp(email, password, displayName || undefined);
+        const trimmedName = displayName.trim();
+        if (!trimmedName) {
+          toast.error("Le pseudo est obligatoire.");
+          setLoading(false);
+          return;
+        }
+        const { error } = await signUp(email, password, trimmedName);
         if (error) {
           toast.error(error.message);
         } else {
@@ -71,10 +77,11 @@ export default function AuthPage() {
               {!isLogin && (
                 <AppInput
                   type="text"
-                  placeholder="Ton prénom"
+                  placeholder="Ton pseudo"
                   value={displayName}
                   onChange={(e) => setDisplayName(e.target.value)}
                   icon={<User className="w-4 h-4" />}
+                  required
                 />
               )}
               

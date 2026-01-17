@@ -1,60 +1,99 @@
-import { useState, useMemo } from "react";
-import { Trophy, Medal, Target, Crown, Loader2 } from "lucide-react";
+import { useState, useMemo, useEffect } from "react";
+import { Trophy, Medal, Target, Crown, Loader2, Calendar } from "lucide-react";
 import { useDataContext } from "@/contexts/DataContext";
-import {
-  computeOlympiadLeaderboard,
-  computeLeaderboardForEvent,
-  computeGlobalLeaderboardForEvent,
-} from "@/store/scoring";
+import { computeOlympiadLeaderboard, computeLeaderboardForEvent, summarizeResult } from "@/store/scoring";
 import { PageContainer } from "@/components/layout/PageContainer";
 import { AppCard, AppCardHeader, AppCardTitle, AppCardContent } from "@/components/ui/app-card";
 import { cn } from "@/lib/utils";
-import type { ID } from "@/lib/types";
+import type { ID, EventInstance } from "@/lib/types";
 
 export default function LeaderboardPage() {
-  const { currentOlympiad, olympiads, activities, players, loading } = useDataContext();
+  const { currentOlympiad, olympiads, players, loading } = useDataContext();
 
+  const [selectedOlympiadId, setSelectedOlympiadId] = useState<string>("");
   const [selectedEventId, setSelectedEventId] = useState<string>("");
-  const [globalEventId, setGlobalEventId] = useState<string>("");
+
+  useEffect(() => {
+    if (selectedOlympiadId) return;
+    if (currentOlympiad?.id) {
+      setSelectedOlympiadId(currentOlympiad.id);
+      return;
+    }
+    if (olympiads.length > 0) {
+      setSelectedOlympiadId(olympiads[0].id);
+    }
+  }, [selectedOlympiadId, currentOlympiad?.id, olympiads]);
+
+  useEffect(() => {
+    if (selectedOlympiadId && !olympiads.some((olymp) => olymp.id === selectedOlympiadId)) {
+      setSelectedOlympiadId(olympiads[0]?.id ?? "");
+    }
+  }, [selectedOlympiadId, olympiads]);
+
+  useEffect(() => {
+    setSelectedEventId("");
+  }, [selectedOlympiadId]);
+
+  const selectedOlympiad = olympiads.find((olymp) => olymp.id === selectedOlympiadId);
 
   const getPlayerName = (id: ID) => players.find((p) => p.id === id)?.name ?? "Inconnu";
 
-  // Olympiad leaderboard
+  const selectedEventTemplates = useMemo(() => {
+    if (!selectedOlympiad) return [];
+    const seen = new Set<string>();
+    return selectedOlympiad.eventInstances.reduce((acc, event) => {
+      if (seen.has(event.templateId)) return acc;
+      seen.add(event.templateId);
+      acc.push({ id: event.templateId, name: event.name });
+      return acc;
+    }, [] as { id: string; name: string }[]);
+  }, [selectedOlympiad]);
+
   const olympiadLeaderboard = useMemo(() => {
-    if (!currentOlympiad) return [];
-    return computeOlympiadLeaderboard(currentOlympiad);
-  }, [currentOlympiad]);
+    if (!selectedOlympiad) return [];
+    return computeOlympiadLeaderboard(selectedOlympiad);
+  }, [selectedOlympiad]);
 
-  // Event leaderboard for current olympiad
   const eventLeaderboard = useMemo(() => {
-    if (!currentOlympiad || !selectedEventId) return [];
-    return computeLeaderboardForEvent(currentOlympiad, selectedEventId);
-  }, [currentOlympiad, selectedEventId]);
+    if (!selectedOlympiad || !selectedEventId) return [];
+    return computeLeaderboardForEvent(selectedOlympiad, selectedEventId);
+  }, [selectedOlympiad, selectedEventId]);
 
-  // Global event leaderboard across all olympiads
-  const globalLeaderboard = useMemo(() => {
-    if (!globalEventId) return [];
-    return computeGlobalLeaderboardForEvent(olympiads, globalEventId);
-  }, [olympiads, globalEventId]);
+  const bestByEvent = useMemo(() => {
+    if (!selectedOlympiad) return [];
+    return selectedEventTemplates.map((activity) => {
+      const leaderboard = computeLeaderboardForEvent(selectedOlympiad, activity.id);
+      const topEntry = leaderboard[0] ?? null;
+      const matchCount = selectedOlympiad.eventInstances
+        .filter((event) => event.templateId === activity.id)
+        .reduce((total, event) => total + (event.matches?.length ?? 0), 0);
+      return {
+        activity,
+        topEntry,
+        matchCount,
+      };
+    });
+  }, [selectedOlympiad, selectedEventTemplates]);
 
-  // Available templates in current olympiad
-  const currentEventTemplates = useMemo(() => {
-    if (!currentOlympiad) return [];
-    const templateIds = new Set(currentOlympiad.eventInstances.map((e) => e.templateId));
-    return activities.filter((a) => templateIds.has(a.id));
-  }, [currentOlympiad, activities]);
+  const selectedEventInstances: EventInstance[] = useMemo(() => {
+    if (!selectedOlympiad || !selectedEventId) return [];
+    return selectedOlympiad.eventInstances.filter((event) => event.templateId === selectedEventId);
+  }, [selectedOlympiad, selectedEventId]);
 
-  // All templates across all olympiads
-  const allEventTemplates = useMemo(() => {
-    const templateIds = new Set(
-      olympiads.flatMap((o) => o.eventInstances.map((e) => e.templateId))
+  const recentMatches = useMemo(() => {
+    if (selectedEventInstances.length === 0) return [];
+    const matches = selectedEventInstances.flatMap((event) =>
+      (event.matches ?? []).map((match) => ({
+        ...match,
+        eventName: event.name,
+      }))
     );
-    return activities.filter((a) => templateIds.has(a.id));
-  }, [olympiads, activities]);
+    return matches.sort((a, b) => b.createdAt - a.createdAt).slice(0, 5);
+  }, [selectedEventInstances]);
 
   if (loading) {
     return (
-      <PageContainer title="🏅 Classements">
+      <PageContainer title="🏅 Résultats">
         <div className="flex items-center justify-center py-12">
           <Loader2 className="w-8 h-8 animate-spin text-primary" />
         </div>
@@ -62,102 +101,159 @@ export default function LeaderboardPage() {
     );
   }
 
-  return (
-    <PageContainer title="🏅 Classements" subtitle="Qui sera le champion ?">
-      {/* Global Olympiad Leaderboard */}
-      {currentOlympiad && (
-        <AppCard variant="highlight">
-          <AppCardHeader>
-            <AppCardTitle>
-              <Crown className="inline-block w-5 h-5 mr-2 text-accent" />
-              {currentOlympiad.title}
-            </AppCardTitle>
-          </AppCardHeader>
-          <AppCardContent>
-            <LeaderboardList
-              entries={olympiadLeaderboard}
-              getPlayerName={getPlayerName}
-            />
-          </AppCardContent>
-        </AppCard>
-      )}
-
-      {/* Per-Event Leaderboard (current olympiad) */}
-      {currentOlympiad && currentEventTemplates.length > 0 && (
-        <AppCard>
-          <AppCardHeader>
-            <AppCardTitle>
-              <Target className="inline-block w-5 h-5 mr-2 text-secondary" />
-              Par épreuve
-            </AppCardTitle>
-          </AppCardHeader>
-          <AppCardContent>
-            <select
-              value={selectedEventId}
-              onChange={(e) => setSelectedEventId(e.target.value)}
-              className="w-full h-12 px-3 rounded-xl bg-input border border-border text-foreground mb-4"
-            >
-              <option value="">Choisir une épreuve...</option>
-              {currentEventTemplates.map((activity) => (
-                <option key={activity.id} value={activity.id}>
-                  {activity.name}
-                </option>
-              ))}
-            </select>
-
-            {selectedEventId && eventLeaderboard.length > 0 && (
-              <LeaderboardList
-                entries={eventLeaderboard}
-                getPlayerName={getPlayerName}
-              />
-            )}
-          </AppCardContent>
-        </AppCard>
-      )}
-
-      {/* Global Per-Event Leaderboard */}
-      {allEventTemplates.length > 0 && (
-        <AppCard>
-          <AppCardHeader>
-            <AppCardTitle>
-              <Medal className="inline-block w-5 h-5 mr-2 text-gold" />
-              Classement global par épreuve
-            </AppCardTitle>
-          </AppCardHeader>
-          <AppCardContent>
-            <select
-              value={globalEventId}
-              onChange={(e) => setGlobalEventId(e.target.value)}
-              className="w-full h-12 px-3 rounded-xl bg-input border border-border text-foreground mb-4"
-            >
-              <option value="">Choisir une épreuve...</option>
-              {allEventTemplates.map((activity) => (
-                <option key={activity.id} value={activity.id}>
-                  {activity.name}
-                </option>
-              ))}
-            </select>
-
-            {globalEventId && globalLeaderboard.length > 0 && (
-              <LeaderboardList
-                entries={globalLeaderboard}
-                getPlayerName={getPlayerName}
-              />
-            )}
-          </AppCardContent>
-        </AppCard>
-      )}
-
-      {!currentOlympiad && olympiads.length === 0 && (
+  if (!selectedOlympiad) {
+    return (
+      <PageContainer title="🏅 Résultats" subtitle="Classements et performances">
         <AppCard variant="muted">
           <AppCardContent className="py-8 text-center">
             <Trophy className="w-12 h-12 mx-auto text-muted-foreground/50 mb-3" />
             <p className="text-muted-foreground">
-              Crée ta première olympiade pour voir les classements !
+              Aucune olympiade pour le moment. Crée ou rejoins-en une pour voir les stats.
             </p>
           </AppCardContent>
         </AppCard>
-      )}
+      </PageContainer>
+    );
+  }
+
+  return (
+    <PageContainer title="🏅 Résultats" subtitle="Compare les performances de tes olympiades">
+      <AppCard variant="highlight">
+        <AppCardHeader>
+          <AppCardTitle>
+            <Calendar className="inline-block w-5 h-5 mr-2 text-primary" />
+            Sélection
+          </AppCardTitle>
+        </AppCardHeader>
+        <AppCardContent>
+          <div className="grid gap-3 md:grid-cols-2">
+            <div className="space-y-2">
+              <label className="text-xs text-muted-foreground">Olympiade</label>
+              <select
+                value={selectedOlympiadId}
+                onChange={(e) => setSelectedOlympiadId(e.target.value)}
+                className="w-full h-12 px-3 rounded-xl bg-input border border-border text-foreground"
+              >
+                {olympiads.map((olymp) => (
+                  <option key={olymp.id} value={olymp.id}>
+                    {olymp.title}
+                  </option>
+                ))}
+              </select>
+              <p className="text-xs text-muted-foreground">
+                {selectedOlympiad.playerIds.length} participants • {selectedOlympiad.eventInstances.length} épreuves
+              </p>
+            </div>
+            <div className="space-y-2">
+              <label className="text-xs text-muted-foreground">Épreuve</label>
+              <select
+                value={selectedEventId}
+                onChange={(e) => setSelectedEventId(e.target.value)}
+                className="w-full h-12 px-3 rounded-xl bg-input border border-border text-foreground"
+              >
+                <option value="">Toutes les épreuves</option>
+                {selectedEventTemplates.map((activity) => (
+                  <option key={activity.id} value={activity.id}>
+                    {activity.name}
+                  </option>
+                ))}
+              </select>
+              <p className="text-xs text-muted-foreground">
+                Choisis une épreuve pour voir le détail des scores.
+              </p>
+            </div>
+          </div>
+        </AppCardContent>
+      </AppCard>
+
+      <AppCard variant="highlight">
+        <AppCardHeader>
+          <AppCardTitle>
+            <Crown className="inline-block w-5 h-5 mr-2 text-accent" />
+            Classement général • {selectedOlympiad.title}
+          </AppCardTitle>
+        </AppCardHeader>
+        <AppCardContent>
+          <LeaderboardList entries={olympiadLeaderboard} getPlayerName={getPlayerName} />
+        </AppCardContent>
+      </AppCard>
+
+      <AppCard>
+        <AppCardHeader>
+          <AppCardTitle>
+            <Medal className="inline-block w-5 h-5 mr-2 text-gold" />
+            Meilleurs par épreuve
+          </AppCardTitle>
+        </AppCardHeader>
+        <AppCardContent>
+          {bestByEvent.length === 0 ? (
+            <p className="text-muted-foreground text-sm text-center py-4">
+              Aucune épreuve pour le moment.
+            </p>
+          ) : (
+            <div className="space-y-2">
+      {bestByEvent.map(({ activity, topEntry, matchCount }) => (
+        <div
+          key={activity.id}
+          className="flex items-center justify-between gap-3 p-3 rounded-xl bg-muted/30"
+        >
+          <div className="min-w-0">
+            <p className="font-medium truncate">{activity.name}</p>
+            <p className="text-xs text-muted-foreground">{matchCount} manches</p>
+          </div>
+          {topEntry ? (
+            <div className="text-right">
+              <p className="text-sm font-semibold truncate">
+                {getPlayerName(topEntry.playerId)}
+              </p>
+              <p className="text-xs text-muted-foreground">{topEntry.points} pts</p>
+            </div>
+          ) : (
+            <span className="text-xs text-muted-foreground">Aucun résultat</span>
+          )}
+        </div>
+      ))}
+            </div>
+          )}
+        </AppCardContent>
+      </AppCard>
+
+      <AppCard>
+        <AppCardHeader>
+          <AppCardTitle>
+            <Target className="inline-block w-5 h-5 mr-2 text-secondary" />
+            Détail des épreuves
+          </AppCardTitle>
+        </AppCardHeader>
+        <AppCardContent>
+          {!selectedEventId && (
+            <p className="text-muted-foreground text-sm text-center py-4">
+              Sélectionne une épreuve pour afficher les résultats détaillés.
+            </p>
+          )}
+          {selectedEventId && (
+            <div className="space-y-4">
+              <LeaderboardList entries={eventLeaderboard} getPlayerName={getPlayerName} />
+              {recentMatches.length > 0 && (
+                <div className="space-y-2">
+                  <p className="text-xs text-muted-foreground">Dernières manches</p>
+                  {recentMatches.map((match) => (
+                    <div
+                      key={match.id}
+                      className="rounded-xl border border-border/60 bg-muted/30 px-3 py-2 text-sm"
+                    >
+                      <p className="font-medium">{match.eventName}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {summarizeResult(match.result, getPlayerName)}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </AppCardContent>
+      </AppCard>
     </PageContainer>
   );
 }
@@ -197,7 +293,6 @@ function LeaderboardList({
               rank > 3 && "bg-muted/30"
             )}
           >
-            {/* Rank badge */}
             <div
               className={cn(
                 "w-10 h-10 flex items-center justify-center rounded-full font-bold text-sm shrink-0",
@@ -213,17 +308,10 @@ function LeaderboardList({
               {rank > 3 && rank}
             </div>
 
-            {/* Name */}
-            <span
-              className={cn(
-                "flex-1 font-medium",
-                isTop3 && "font-bold"
-              )}
-            >
+            <span className={cn("flex-1 font-medium", isTop3 && "font-bold")}>
               {getPlayerName(entry.playerId)}
             </span>
 
-            {/* Points */}
             <div
               className={cn(
                 "px-3 py-1 rounded-full text-sm font-bold",

@@ -7,6 +7,8 @@ import type {
   AppNotification,
   OlympiadInvite,
   OlympiadMember,
+  UserSubscription,
+  UserSearchResult,
   EventType,
   ScoringRule,
   EventResult,
@@ -20,6 +22,7 @@ interface DataContextValue {
   membersByOlympiad: Record<ID, OlympiadMember[]>;
   invites: OlympiadInvite[];
   notifications: AppNotification[];
+  subscription: UserSubscription | null;
   currentOlympiadId: ID | undefined;
   currentOlympiad: IOlympiad | undefined;
   loading: boolean;
@@ -43,8 +46,11 @@ interface DataContextValue {
   addMatch: (olympId: ID, instanceId: ID, result: EventResult) => Promise<void>;
   removeMatch: (olympId: ID, instanceId: ID, matchId: ID) => Promise<void>;
   inviteToOlympiad: (olympId: ID, email: string) => Promise<void>;
+  inviteUserToOlympiad: (olympId: ID, userId: string) => Promise<void>;
   acceptInvite: (inviteId: ID) => Promise<void>;
   markNotificationRead: (notificationId: ID) => Promise<void>;
+  startSubscriptionCheckout: (returnUrl: string) => Promise<string | null>;
+  searchUsers: (query: string) => Promise<UserSearchResult[]>;
   refetch: () => Promise<void>;
 }
 

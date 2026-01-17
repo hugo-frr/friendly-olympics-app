@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { Trash2, UserPlus, Plus, Minus, Search, Trophy, Calendar, LogOut, Loader2, Mail, Bell } from "lucide-react";
+import { useState, useRef, useEffect } from "react";
+import { Trash2, Plus, Minus, Search, Trophy, Calendar, LogOut, Loader2, Bell, Settings } from "lucide-react";
 import { useDataContext } from "@/contexts/DataContext";
 import { useAuthContext } from "@/contexts/AuthContext";
 import { PageContainer } from "@/components/layout/PageContainer";
@@ -11,7 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
-import type { EventType, ScoringRule } from "@/lib/types";
+import type { EventType, ScoringRule, UserSearchResult } from "@/lib/types";
 import { EVENT_TYPE_LABELS } from "@/lib/types";
 import { toast } from "sonner";
 
@@ -42,7 +42,7 @@ export default function OlympiadsPage() {
       {/* User info */}
       <div className="flex items-center justify-between mb-2 px-1">
         <span className="text-sm text-muted-foreground">
-          {user?.email}
+          {user?.user_metadata?.display_name ?? user?.email}
         </span>
         <button
           onClick={handleSignOut}
@@ -157,40 +157,65 @@ function ParticipantsSection() {
   const {
     currentOlympiad,
     players,
+    membersByOlympiad,
     addPlayerToOlympiad,
     removePlayerFromOlympiad,
-    inviteToOlympiad,
-    addPlayer,
+    inviteUserToOlympiad,
+    searchUsers,
     removePlayer,
   } = useDataContext();
   const { user } = useAuthContext();
-  const [inviteEmail, setInviteEmail] = useState("");
+  const [userSearch, setUserSearch] = useState("");
+  const [userResults, setUserResults] = useState<UserSearchResult[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
   const [participantToRemove, setParticipantToRemove] = useState<{ id: string; name: string } | null>(null);
-  const [newPlayerName, setNewPlayerName] = useState("");
   const [playerToRemove, setPlayerToRemove] = useState<{ id: string; name: string } | null>(null);
 
   const isOwner = currentOlympiad?.ownerId === user?.id;
   const olympiadPlayers = currentOlympiad
     ? players.filter((player) => currentOlympiad.playerIds.includes(player.id))
     : [];
+  const olympiadMembers = currentOlympiad ? membersByOlympiad[currentOlympiad.id] ?? [] : [];
+  const ownerLabel =
+    olympiadMembers.find((member) => member.role === "owner")?.displayName ?? "Organisateur";
   const participantIds = new Set(olympiadPlayers.map((player) => player.id));
   const myPlayers = players.filter((player) => player.userId === user?.id);
+  const linkedPlayers = myPlayers.filter((player) => player.linkedUserId);
+  const localPlayersCount = myPlayers.length - linkedPlayers.length;
+  const linkedUserIds = new Set(
+    linkedPlayers.map((player) => player.linkedUserId).filter((id): id is string => Boolean(id))
+  );
 
-  const handleInvite = async () => {
-    if (!inviteEmail.trim()) return;
+  useEffect(() => {
+    if (!currentOlympiad) {
+      setUserResults([]);
+      setIsSearching(false);
+      return;
+    }
+    const trimmed = userSearch.trim();
+    if (trimmed.length < 2) {
+      setUserResults([]);
+      setIsSearching(false);
+      return;
+    }
+    setIsSearching(true);
+    const timeoutId = window.setTimeout(async () => {
+      const results = await searchUsers(trimmed);
+      setUserResults(results);
+      setIsSearching(false);
+    }, 300);
+    return () => window.clearTimeout(timeoutId);
+  }, [userSearch, currentOlympiad?.id]);
+
+  const handleInviteUser = async (invitedUserId: string, displayName: string | null) => {
     if (!currentOlympiad) {
       toast.error("Sélectionne une olympiade avant d'inviter.");
       return;
     }
-    await inviteToOlympiad(currentOlympiad.id, inviteEmail);
-    setInviteEmail("");
-    toast.success("Invitation envoyée");
-  };
-
-  const handleAddPlayer = async () => {
-    if (!newPlayerName.trim()) return;
-    await addPlayer(newPlayerName);
-    setNewPlayerName("");
+    await inviteUserToOlympiad(currentOlympiad.id, invitedUserId);
+    setUserSearch("");
+    setUserResults([]);
+    toast.success(`Invitation envoyée${displayName ? ` à ${displayName}` : ""}`);
   };
 
   const handleRemovePlayer = async (id: string, name: string) => {
@@ -225,32 +250,54 @@ function ParticipantsSection() {
           </AppCard>
         )}
         {isOwner && (
-          <div className="space-y-2">
-            <div className="flex gap-2">
+          <div className="space-y-3">
+            <div className="space-y-2">
               <AppInput
-                placeholder="Créer un joueur"
-                value={newPlayerName}
-                onChange={(e) => setNewPlayerName(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && handleAddPlayer()}
-                className="flex-1"
-              />
-              <AppButton onClick={handleAddPlayer} size="icon">
-                <UserPlus className="w-5 h-5" />
-              </AppButton>
-            </div>
-            <div className="flex gap-2">
-              <AppInput
-                placeholder="Inviter un user (email)"
-                value={inviteEmail}
-                onChange={(e) => setInviteEmail(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && handleInvite()}
+                placeholder="Rechercher un pseudo"
+                value={userSearch}
+                onChange={(e) => setUserSearch(e.target.value)}
                 className="flex-1"
                 disabled={!currentOlympiad}
               />
-              <AppButton onClick={handleInvite} size="icon" disabled={!currentOlympiad}>
-                <Mail className="w-4 h-4" />
-              </AppButton>
+              {isSearching && (
+                <p className="text-xs text-muted-foreground">Recherche...</p>
+              )}
+              {!isSearching && userSearch.trim().length >= 2 && userResults.length === 0 && (
+                <p className="text-xs text-muted-foreground">Aucun utilisateur trouvé.</p>
+              )}
+              {userResults.length > 0 && (
+                <div className="space-y-2 max-h-40 overflow-y-auto">
+                  {userResults.map((result) => {
+                    const isFriend = linkedUserIds.has(result.userId);
+                    return (
+                      <div
+                        key={result.userId}
+                        className="flex items-center justify-between gap-2 rounded-lg border border-border/70 bg-muted/30 px-3 py-2"
+                      >
+                        <span className="text-sm font-medium truncate">
+                          {result.displayName ?? "Utilisateur"}
+                        </span>
+                        <div className="flex items-center gap-2">
+    
+                          <AppButton
+                            size="sm"
+                            onClick={() => handleInviteUser(result.userId, result.displayName)}
+                            disabled={!currentOlympiad || isFriend}
+                          >
+                            {isFriend ? "Déjà ami" : "Inviter"}
+                          </AppButton>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
+            {localPlayersCount > 0 && (
+              <p className="text-xs text-muted-foreground">
+                {localPlayersCount} joueurs locaux non utilisables (compte requis).
+              </p>
+            )}
             {!currentOlympiad && (
               <p className="text-xs text-muted-foreground">
                 Sélectionne une olympiade pour inviter ou ajouter des joueurs.
@@ -262,17 +309,17 @@ function ParticipantsSection() {
         {isOwner && (
           <div>
             <p className="text-xs text-muted-foreground mb-2">
-              Joueurs {myPlayers.length} • Participants {olympiadPlayers.length}
+              Joueurs {linkedPlayers.length} • Participants {olympiadPlayers.length}
             </p>
-            {myPlayers.length === 0 ? (
+            {linkedPlayers.length === 0 ? (
               <p className="text-muted-foreground text-sm text-center py-2">
                 Aucun joueur pour le moment.
               </p>
             ) : (
               <div className="flex flex-wrap gap-2 max-h-40 overflow-y-auto">
-                {myPlayers.map((player) => {
+                {linkedPlayers.map((player) => {
                   const isParticipant = participantIds.has(player.id);
-                  const isLinkedUser = Boolean(player.linkedUserId);
+                  const isLinkedUser = Boolean(player.linkedUserId && player.linkedUserId !== user?.id);
                   return (
                     <div key={player.id} className="flex items-center gap-1">
                       <Chip
@@ -281,13 +328,9 @@ function ParticipantsSection() {
                       >
                         <span className="flex items-center gap-2">
                           <span>{player.name}</span>
-                          {isLinkedUser ? (
+                          {isLinkedUser && (
                             <Badge variant="secondary" className="px-2 py-0 text-[10px]">
-                              Invité
-                            </Badge>
-                          ) : (
-                            <Badge variant="outline" className="px-2 py-0 text-[10px]">
-                              Perso
+                              ami(e)
                             </Badge>
                           )}
                           <span className="text-xs">{isParticipant ? "✓" : "+"}</span>
@@ -309,26 +352,31 @@ function ParticipantsSection() {
         )}
 
         {!isOwner && currentOlympiad && (
-          <div>
-            <p className="text-xs text-muted-foreground mb-2">
-              Participants ({olympiadPlayers.length})
-            </p>
-            {olympiadPlayers.length === 0 ? (
-              <p className="text-muted-foreground text-sm text-center py-2">
-                Aucun participant pour le moment.
+          <div className="space-y-3">
+            <div className="rounded-lg border border-primary/20 bg-primary/5 px-3 py-2 text-xs text-primary">
+              Tu participes à cette olympiade. Organisateur : {ownerLabel}
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground mb-2">
+                Participants ({olympiadPlayers.length})
               </p>
-            ) : (
-              <div className="flex flex-wrap gap-2 max-h-40 overflow-y-auto">
-                {olympiadPlayers.map((player) => (
-                  <div
-                    key={player.id}
-                    className="flex items-center gap-2 bg-muted rounded-full pl-3 pr-1 py-1"
-                  >
-                    <span className="text-sm font-medium">{player.name}</span>
-                  </div>
-                ))}
-              </div>
-            )}
+              {olympiadPlayers.length === 0 ? (
+                <p className="text-muted-foreground text-sm text-center py-2">
+                  Aucun participant pour le moment.
+                </p>
+              ) : (
+                <div className="flex flex-wrap gap-2 max-h-40 overflow-y-auto">
+                  {olympiadPlayers.map((player) => (
+                    <div
+                      key={player.id}
+                      className="flex items-center justify-center bg-muted rounded-full px-3 py-1"
+                    >
+                      <span className="text-sm font-medium">{player.name}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         )}
         <ConfirmDialog
@@ -504,16 +552,18 @@ function OlympiadsListSection() {
 // EVENTS SECTION
 // ============================================
 function EventsSection() {
-  const { currentOlympiad, activities, addEventInstance, removeEventInstance } = useDataContext();
+  const { currentOlympiad, activities, players, addEventInstance, removeEventInstance } = useDataContext();
   const { user } = useAuthContext();
   const [searchQuery, setSearchQuery] = useState("");
   const [showAddActivity, setShowAddActivity] = useState(false);
   const [addDialogOpen, setAddDialogOpen] = useState(false);
   const [pendingActivity, setPendingActivity] = useState<typeof activities[0] | null>(null);
+  const [selectedEventType, setSelectedEventType] = useState<EventType>("classement");
   const [ruleTableInput, setRuleTableInput] = useState("");
   const [pointsPerWin, setPointsPerWin] = useState("3");
   const [teamSize, setTeamSize] = useState("2");
   const [activityToRemove, setActivityToRemove] = useState<{ activity: typeof activities[0]; instanceId: string } | null>(null);
+  const addSectionRef = useRef<HTMLDivElement | null>(null);
 
   if (!currentOlympiad) {
     return (
@@ -551,9 +601,6 @@ function EventsSection() {
                 >
                   <div className="flex-1 min-w-0">
                     <span className="font-medium">{event.name}</span>
-                    <p className="text-xs text-muted-foreground">
-                      {EVENT_TYPE_LABELS[event.type]}
-                    </p>
                   </div>
                 </div>
               ))}
@@ -588,10 +635,17 @@ function EventsSection() {
       .map((n) => parseInt(n.trim(), 10))
       .filter((n) => Number.isFinite(n));
 
+  const olympiadParticipants = currentOlympiad
+    ? players.filter((player) => currentOlympiad.playerIds.includes(player.id))
+    : [];
+  const linkedParticipantCount = olympiadParticipants.filter((player) => player.linkedUserId).length;
+  const participantCount = linkedParticipantCount || currentOlympiad.playerIds.length;
+
   const openAddDialog = (activity: typeof activities[0]) => {
     if (!isOwner) return;
-    const playerCount = currentOlympiad.playerIds.length;
+    const playerCount = participantCount;
     setPendingActivity(activity);
+    setSelectedEventType(playerCount === 2 ? "duel_1v1" : "classement");
     setRuleTableInput(buildAutoTable(playerCount).join(","));
     setPointsPerWin("3");
     setTeamSize("2");
@@ -604,10 +658,10 @@ function EventsSection() {
     let rule: ScoringRule;
     let resolvedTeamSize: number | undefined;
 
-    if (activity.defaultType === "duel_1v1" || activity.defaultType === "equipe") {
+    if (selectedEventType === "duel_1v1" || selectedEventType === "equipe") {
       const points = parseInt(pointsPerWin, 10) || 3;
       rule = { kind: "per_win", pointsPerPlayer: points };
-      resolvedTeamSize = activity.defaultType === "equipe" ? parseInt(teamSize, 10) || 2 : undefined;
+      resolvedTeamSize = selectedEventType === "equipe" ? parseInt(teamSize, 10) || 2 : undefined;
     } else {
       const table = parseRuleTable(ruleTableInput);
       if (table.length === 0) {
@@ -620,7 +674,7 @@ function EventsSection() {
     await addEventInstance(currentOlympiad.id, {
       templateId: activity.id,
       name: activity.name,
-      type: activity.defaultType,
+      type: selectedEventType,
       rule,
       teamSize: resolvedTeamSize,
     });
@@ -637,6 +691,14 @@ function EventsSection() {
     setActivityToRemove({ activity, instanceId: lastInstance.id });
   };
 
+  const handleOpenAddSection = () => {
+    if (!isOwner) return;
+    setShowAddActivity(true);
+    setTimeout(() => {
+      addSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 0);
+  };
+
   return (
     <>
       <AppCard>
@@ -648,9 +710,9 @@ function EventsSection() {
             <AppButton
               variant="ghost"
               size="sm"
-              onClick={() => setShowAddActivity(!showAddActivity)}
+              onClick={handleOpenAddSection}
             >
-              <Plus className="w-4 h-4" />
+              <Settings className="w-4 h-4" />
             </AppButton>
           )}
         </AppCardHeader>
@@ -694,9 +756,6 @@ function EventsSection() {
                         </span>
                       )}
                     </div>
-                    <p className="text-xs text-muted-foreground">
-                      {EVENT_TYPE_LABELS[activity.defaultType]}
-                    </p>
                   </div>
                   <div className="flex gap-1">
                     {isOwner && (
@@ -727,7 +786,11 @@ function EventsSection() {
         </AppCardContent>
       </AppCard>
 
-      {showAddActivity && isOwner && <AddActivitySection onClose={() => setShowAddActivity(false)} />}
+      {showAddActivity && isOwner && (
+        <div ref={addSectionRef}>
+          <AddActivitySection onClose={() => setShowAddActivity(false)} />
+        </div>
+      )}
       <Dialog open={addDialogOpen} onOpenChange={setAddDialogOpen}>
         <DialogContent>
           <DialogHeader>
@@ -738,7 +801,21 @@ function EventsSection() {
           </DialogHeader>
           {pendingActivity && (
             <div className="space-y-4">
-              {pendingActivity.defaultType === "equipe" && (
+              <div className="space-y-2">
+                <label className="text-xs text-muted-foreground">Type d'épreuve</label>
+                <div className="flex flex-wrap gap-2">
+                  {(["classement", "duel_1v1", "equipe"] as EventType[]).map((type) => (
+                    <Chip
+                      key={type}
+                      active={selectedEventType === type}
+                      onClick={() => setSelectedEventType(type)}
+                    >
+                      {EVENT_TYPE_LABELS[type]}
+                    </Chip>
+                  ))}
+                </div>
+              </div>
+              {selectedEventType === "equipe" && (
                 <div className="space-y-1">
                   <label className="text-xs text-muted-foreground">Taille des équipes</label>
                   <AppInput
@@ -749,7 +826,7 @@ function EventsSection() {
                   />
                 </div>
               )}
-              {(pendingActivity.defaultType === "duel_1v1" || pendingActivity.defaultType === "equipe") && (
+              {(selectedEventType === "duel_1v1" || selectedEventType === "equipe") && (
                 <div className="space-y-1">
                   <label className="text-xs text-muted-foreground">Points par victoire</label>
                   <AppInput
@@ -760,7 +837,7 @@ function EventsSection() {
                   />
                 </div>
               )}
-              {pendingActivity.defaultType === "classement" && (
+              {selectedEventType === "classement" && (
                 <div className="space-y-2">
                   <label className="text-xs text-muted-foreground">Barème</label>
                   <AppInput
@@ -768,16 +845,16 @@ function EventsSection() {
                     value={ruleTableInput}
                     onChange={(e) => setRuleTableInput(e.target.value)}
                   />
-                  <AppButton
-                    size="sm"
-                    variant="secondary"
-                    onClick={() => {
-                      const auto = buildAutoTable(currentOlympiad.playerIds.length).join(",");
-                      setRuleTableInput(auto);
-                    }}
-                  >
-                    Auto ({currentOlympiad.playerIds.length} joueurs)
-                  </AppButton>
+                    <AppButton
+                      size="sm"
+                      variant="secondary"
+                      onClick={() => {
+                        const auto = buildAutoTable(participantCount).join(",");
+                        setRuleTableInput(auto);
+                      }}
+                    >
+                      Auto ({participantCount} joueurs)
+                    </AppButton>
                 </div>
               )}
             </div>
@@ -812,29 +889,13 @@ function EventsSection() {
 // ============================================
 function AddActivitySection({ onClose }: { onClose: () => void }) {
   const [name, setName] = useState("");
-  const [selectedType, setSelectedType] = useState<EventType>("classement");
   const [activityToRemove, setActivityToRemove] = useState<{ id: string; name: string } | null>(null);
 
-  const { activities, addActivity, removeActivity, currentOlympiad } = useDataContext();
-  const olympiadPlayerCount = currentOlympiad?.playerIds.length ?? 0;
-
-  const buildAutoTable = (count: number) => {
-    const safeCount = Math.max(1, count);
-    return Array.from({ length: safeCount }, (_, idx) => Math.max(safeCount - 1 - idx, 0));
-  };
-
-  const buildRule = (): ScoringRule => {
-    if (selectedType === "duel_1v1" || selectedType === "equipe") {
-      return { kind: "per_win", pointsPerPlayer: 3 };
-    }
-
-    const table = buildAutoTable(olympiadPlayerCount || 5);
-    return { kind: "placement_table", table };
-  };
+  const { activities, addActivity, removeActivity } = useDataContext();
 
   const handleAdd = async () => {
     if (name.trim()) {
-      await addActivity(name, selectedType, buildRule());
+      await addActivity(name, "classement");
       setName("");
       toast.success("Activité ajoutée");
     }
@@ -843,8 +904,6 @@ function AddActivitySection({ onClose }: { onClose: () => void }) {
   const handleRemove = async (id: string, actName: string) => {
     setActivityToRemove({ id, name: actName });
   };
-
-  const eventTypes: EventType[] = ["classement", "duel_1v1", "equipe"];
 
   return (
     <AppCard>
@@ -856,7 +915,7 @@ function AddActivitySection({ onClose }: { onClose: () => void }) {
       </AppCardHeader>
       <AppCardContent>
         <p className="text-xs text-muted-foreground mb-3">
-          Le barème sera défini au moment d'ajouter l'épreuve à l'olympiade.
+          Crée simplement le nom. Le type et le barème seront définis lors de l'ajout à une olympiade.
         </p>
         <AppInput
           placeholder="Nom de l'activité (ex: Ping-pong)"
@@ -864,21 +923,6 @@ function AddActivitySection({ onClose }: { onClose: () => void }) {
           onChange={(e) => setName(e.target.value)}
           className="mb-4"
         />
-
-        <div className="mb-4">
-          <label className="text-sm text-muted-foreground mb-2 block">Type</label>
-          <div className="flex flex-wrap gap-2">
-            {eventTypes.map((type) => (
-              <Chip
-                key={type}
-                active={selectedType === type}
-                onClick={() => setSelectedType(type)}
-              >
-                {EVENT_TYPE_LABELS[type]}
-              </Chip>
-            ))}
-          </div>
-        </div>
 
         <AppButton onClick={handleAdd} className="w-full mb-6" disabled={!name.trim()}>
           <Plus className="w-4 h-4 mr-2" />
@@ -896,9 +940,7 @@ function AddActivitySection({ onClose }: { onClose: () => void }) {
               >
                 <div>
                   <span className="font-medium text-sm">{activity.name}</span>
-                  <span className="text-xs text-muted-foreground ml-2">
-                    {EVENT_TYPE_LABELS[activity.defaultType]}
-                  </span>
+  
                 </div>
                 <button
                   onClick={() => handleRemove(activity.id, activity.name)}
