@@ -105,6 +105,7 @@ export const useStore = create<IStoreState>()(
 
         const newOlympiad: IOlympiad = {
           id: nanoid(8),
+          ownerId: "local",
           title: trimmedTitle,
           createdAt: Date.now(),
           playerIds,
