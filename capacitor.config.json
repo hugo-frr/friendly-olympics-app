@@ -1,11 +1,7 @@
 {
-  "appId": "app.lovable.0a1383cb9d7d4f7cb0dfde5ef2600cd7",
-  "appName": "Olympiades",
+  "appId": "com.tondomaine.friendlyolympics",
+  "appName": "Friendly Olympics",
   "webDir": "dist",
-  "server": {
-    "url": "https://0a1383cb-9d7d-4f7c-b0df-de5ef2600cd7.lovableproject.com?forceHideBadge=true",
-    "cleartext": true
-  },
   "ios": {
     "contentInset": "automatic"
   },
